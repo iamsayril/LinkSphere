@@ -17,7 +17,7 @@ const supabase = createClient(
 );
 
 app.get('/', (req, res) => {
-  res.json({ message: 'LinkSphere is API is running 🚀' });
+  res.json({ message: 'LinkSphere API is running 🚀' });
 });
 
 app.get('/users', async (req, res) => {
