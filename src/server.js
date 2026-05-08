@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const { AccessToken } = require('livekit-server-sdk');
 
 const app = express();
 
@@ -24,6 +25,14 @@ app.get('/', (req, res) => {
   });
 });
 
+// Health check route
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'LiveKit backend is running'
+  });
+});
+
 // Get all users
 app.get('/users', async (req, res) => {
   try {
@@ -38,6 +47,44 @@ app.get('/users', async (req, res) => {
     }
 
     res.json(data);
+
+  } catch (err) {
+    res.status(500).json({
+      error: err.message
+    });
+  }
+});
+
+// Generate LiveKit token
+app.post('/getToken', async (req, res) => {
+  try {
+    const { roomName, participantName } = req.body;
+
+    if (!roomName || !participantName) {
+      return res.status(400).json({
+        error: 'roomName and participantName are required'
+      });
+    }
+
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: participantName,
+    });
+
+    at.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+    });
+
+    const token = await at.toJwt();
+
+    res.json({
+      token,
+    });
 
   } catch (err) {
     res.status(500).json({
