@@ -37,7 +37,7 @@ app.get('/health', (req, res) => {
 app.get('/users', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from('user')
       .select('*');
 
     if (error) {
