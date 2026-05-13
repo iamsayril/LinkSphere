@@ -9,6 +9,7 @@ const createWorkspace = async (req, res) => {
     return res.status(400).json({ error: 'Workspace name is required' });
   }
 
+  // Create workspace
   const { data: workspace, error: wsError } = await supabase
     .from('workspace')
     .insert({ name, description, user_id, is_public })
@@ -17,10 +18,27 @@ const createWorkspace = async (req, res) => {
 
   if (wsError) return res.status(500).json({ error: wsError.message });
 
+  // Fetch creator's info
+  const { data: user, error: userError } = await supabase
+    .from('user')
+    .select('name, email, status')
+    .eq('id', user_id)
+    .single();
+
+  if (userError || !user) return res.status(500).json({ error: 'Could not fetch user info' });
+
   // Auto-add creator as owner member
   const { error: memberError } = await supabase
     .from('workspace_member')
-    .insert({ workspace_id: workspace.workspace_id, user_id, role: 'owner' });
+    .insert({
+      workspace_id: workspace.workspace_id,
+      user_id,
+      name: user.name,
+      email: user.email,
+      role: 'owner',
+      status: user.status || 'active',
+      join_at: new Date().toISOString(),
+    });
 
   if (memberError) return res.status(500).json({ error: memberError.message });
 
@@ -38,7 +56,7 @@ const getMyWorkspaces = async (req, res) => {
     .from('workspace_member')
     .select(`
       role,
-      joined_at,
+      join_at,
       workspace (
         workspace_id, name, description, is_public, user_id, created_at
       )
@@ -50,7 +68,7 @@ const getMyWorkspaces = async (req, res) => {
   const workspaces = data.map((m) => ({
     ...m.workspace,
     my_role: m.role,
-    joined_at: m.joined_at,
+    joined_at: m.join_at,
   }));
 
   return res.status(200).json(workspaces);
@@ -61,14 +79,14 @@ const getWorkspaceById = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;
 
-  const { data: member, error: memberError } = await supabase
+  const { data: member } = await supabase
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
     .eq('user_id', user_id)
     .single();
 
-  if (memberError || !member) {
+  if (!member) {
     return res.status(403).json({ error: 'You are not a member of this workspace' });
   }
 
@@ -159,6 +177,7 @@ const addMember = async (req, res) => {
     return res.status(400).json({ error: 'user_id is required' });
   }
 
+  // Only owner/admin can add members
   const { data: requester } = await supabase
     .from('workspace_member')
     .select('role')
@@ -170,6 +189,7 @@ const addMember = async (req, res) => {
     return res.status(403).json({ error: 'Only owners and admins can add members' });
   }
 
+  // Check if already a member
   const { data: existing } = await supabase
     .from('workspace_member')
     .select('workspace_id')
@@ -181,9 +201,26 @@ const addMember = async (req, res) => {
     return res.status(409).json({ error: 'User is already a member of this workspace' });
   }
 
+  // Fetch target user info
+  const { data: user, error: userError } = await supabase
+    .from('user')
+    .select('name, email, status')
+    .eq('id', target_user_id)
+    .single();
+
+  if (userError || !user) return res.status(404).json({ error: 'User not found' });
+
   const { data, error } = await supabase
     .from('workspace_member')
-    .insert({ workspace_id: workspaceId, user_id: target_user_id, role })
+    .insert({
+      workspace_id: workspaceId,
+      user_id: target_user_id,
+      name: user.name,
+      email: user.email,
+      role,
+      status: user.status || 'active',
+      join_at: new Date().toISOString(),
+    })
     .select()
     .single();
 
@@ -213,24 +250,12 @@ const getMembers = async (req, res) => {
 
   const { data, error } = await supabase
     .from('workspace_member')
-    .select(`
-      role,
-      joined_at,
-      user (
-        id, name, email, status, avatar_url
-      )
-    `)
+    .select('user_id, name, email, role, status, join_at')
     .eq('workspace_id', workspaceId);
 
   if (error) return res.status(500).json({ error: error.message });
 
-  const members = data.map((m) => ({
-    ...m.user,
-    role: m.role,
-    joined_at: m.joined_at,
-  }));
-
-  return res.status(200).json(members);
+  return res.status(200).json(data);
 };
 
 // ─── Remove Member ───────────────────────────────────────────────────────────
@@ -251,6 +276,7 @@ const removeMember = async (req, res) => {
     }
   }
 
+  // Cannot remove the owner
   const { data: workspace } = await supabase
     .from('workspace')
     .select('user_id')
