@@ -22,7 +22,7 @@ const createWorkspace = async (req, res) => {
   const { data: user, error: userError } = await supabase
     .from('user')
     .select('name, email, status')
-    .eq('id', user_id)
+    .eq('user_id', user_id)
     .single();
 
   if (userError || !user) return res.status(500).json({ error: 'Could not fetch user info' });
@@ -205,7 +205,7 @@ const addMember = async (req, res) => {
   const { data: user, error: userError } = await supabase
     .from('user')
     .select('name, email, status')
-    .eq('id', target_user_id)
+    .eq('user_id', target_user_id)
     .single();
 
   if (userError || !user) return res.status(404).json({ error: 'User not found' });
