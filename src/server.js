@@ -27,6 +27,7 @@ const supabase = createClient(
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/messages', require('./routes/messageRoutes'));
+app.use('/api/channels', require('./routes/channelRoutes')); // ← added
 
 // Root
 app.get('/', (req, res) => {

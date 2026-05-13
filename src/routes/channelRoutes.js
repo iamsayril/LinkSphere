@@ -1,15 +1,24 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-
-const auth = require("../middleware/authMiddleware");
-
 const {
   createChannel,
-  getChannels
-} = require("../controllers/channelController");
+  getChannels,
+  getChannel,
+  joinChannel,
+  leaveChannel,
+  updateChannel,
+  deleteChannel,
+} = require('../controllers/channelController');
+const { authenticate } = require('../middleware/authMiddleware');
 
-router.post("/", auth, createChannel);
+router.use(authenticate);
 
-router.get("/:workspaceId", auth, getChannels);
+router.post('/', createChannel);
+router.get('/', getChannels);
+router.get('/:channelId', getChannel);
+router.post('/:channelId/join', joinChannel);
+router.delete('/:channelId/leave', leaveChannel);
+router.patch('/:channelId', updateChannel);
+router.delete('/:channelId', deleteChannel);
 
 module.exports = router;
