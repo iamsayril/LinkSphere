@@ -1,15 +1,24 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-
-const auth = require("../middleware/authMiddleware");
-
 const {
   sendMessage,
-  getMessages
-} = require("../controllers/messageController");
+  getMessages,
+  getThread,
+  editMessage,
+  deleteMessage,
+  addReaction,
+  removeReaction,
+} = require('../controllers/messageController');
+const { authenticate } = require('../middleware/authMiddleware');
 
-router.post("/", auth, sendMessage);
+router.use(authenticate); // all message routes require auth
 
-router.get("/:channelId", auth, getMessages);
+router.post('/', sendMessage);
+router.get('/:channelId', getMessages);
+router.get('/:messageId/thread', getThread);
+router.patch('/:messageId', editMessage);
+router.delete('/:messageId', deleteMessage);
+router.post('/:messageId/reactions', addReaction);
+router.delete('/:messageId/reactions/:emoji', removeReaction);
 
 module.exports = router;
