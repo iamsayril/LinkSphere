@@ -9,6 +9,10 @@ const {
   updateChannel,
   deleteChannel,
 } = require('../controllers/channelController');
+const {
+  getMessages,
+  sendMessage,
+} = require('../controllers/messageController');
 const { authenticate } = require('../middleware/authMiddleware');
 
 router.use(authenticate);
