@@ -11,7 +11,7 @@ const messageRoutes = require("./routes/messageRoutes");
 const userRoutes = require("./routes/userRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const searchRoutes = require("./routes/searchRoutes");
-const fileRoutes = require("./routes/fileRoutes"); 
+const fileRoutes = require("./routes/fileRoutes");
 
 const app = express();
 
@@ -58,6 +58,12 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   });
+});
+
+// Error handler ← added
+app.use((err, req, res, next) => {
+  console.error('Global error:', err);
+  return res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
 // 404 handler
