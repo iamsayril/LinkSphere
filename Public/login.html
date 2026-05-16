@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Linksphere Login</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="logo-icon">✣</div>
+    <div class="logo-text">LINKSPHERE</div>
+  </header>
+
+  <main class="page">
+    <div class="brand-small">LINKSPHERE</div>
+
+    <section class="auth-card">
+      <h1>WELCOME BACK</h1>
+      <div class="underline"></div>
+
+      <form id="login-form">
+        <!-- Error message box injected here by auth.js -->
+
+        <label for="login-email">Email</label>
+        <input
+          id="login-email"
+          type="email"
+          placeholder="USER@DOMAIN.COM"
+          autocomplete="email"
+          required
+        />
+
+        <label for="login-password">Password</label>
+        <input
+          id="login-password"
+          type="password"
+          placeholder="••••••••"
+          autocomplete="current-password"
+          required
+        />
+
+        <button id="login-btn" class="primary-btn" type="submit">LOGIN</button>
+      </form>
+
+      <div class="divider">
+        <span></span>
+        <p>OR</p>
+        <span></span>
+      </div>
+
+      <button class="google-btn">↪ LOGIN WITH GOOGLE</button>
+
+      <p class="switch-text">
+        Don't have an account?
+        <a href="signup.html">SIGN UP</a>
+      </p>
+    </section>
+
+    <div class="status-bar">
+      <div><span class="dot"></span>SYSTEM ACTIVE</div>
+      <p>LATENCY: 12MS</p>
+      <p>V2.4.0</p>
+    </div>
+  </main>
+
+  <footer>
+    <h2>LINKSPHERE</h2>
+    <p>© 2024 LINKSPHERE. PRECISION ENGINEERED.</p>
+    <div class="footer-links">
+      <div>
+        <a href="#">PRODUCT</a>
+        <a href="#">FEATURES</a>
+        <a href="#">PRICING</a>
+      </div>
+      <div>
+        <a href="#">PRIVACY</a>
+        <a href="#">TERMS</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="auth.js"></script>
+</body>
+</html>
