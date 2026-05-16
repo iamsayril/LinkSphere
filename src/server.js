@@ -1,19 +1,46 @@
 require('dotenv').config();
 
+const express = require('express');
+const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const { createClient } = require('@supabase/supabase-js');
 
-const app = require('./app'); // ← import the real app
-
-const PORT = process.env.PORT || 3000;
-
+const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: process.env.CORS_ORIGIN || '*' }
 });
 
-// Make io accessible in controllers via req.app.get('io')
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
 app.set('io', io);
+
+// Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+// Routes
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/messages', require('./routes/messageRoutes'));
+
+// Root
+app.get('/', (req, res) => {
+  res.json({ message: 'LinkSphere API is running 🚀' });
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
 
 // Socket.io
 io.on('connection', (socket) => {
@@ -27,15 +54,6 @@ io.on('connection', (socket) => {
   socket.on('leave_channel', (channelId) => {
     socket.leave(channelId);
     console.log(`👤 ${socket.id} left channel: ${channelId}`);
-  });
-
-  socket.on('join_workspace', (workspaceId) => {
-    socket.join(`workspace:${workspaceId}`);
-    console.log(`👤 ${socket.id} joined workspace: ${workspaceId}`);
-  });
-
-  socket.on('leave_workspace', (workspaceId) => {
-    socket.leave(`workspace:${workspaceId}`);
   });
 
   socket.on('typing', ({ channelId, user }) => {

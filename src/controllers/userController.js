@@ -1,5 +1,5 @@
 const supabase = require('../config/supabase');
-const bcrypt = require('bcrypt');
+const bcrypt = require("bcryptjs"); // ← change this in both files
 
 // GET /api/users/profile
 const getProfile = async (req, res) => {
