@@ -27,7 +27,7 @@ exports.register = async (req, res) => {
     if (password.length < 6)
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
 
-    // 1. Create user in Supabase Auth — triggers confirmation email
+    // 1. Create user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -43,6 +43,7 @@ exports.register = async (req, res) => {
     }
 
     const authUser = authData.user;
+    console.log('AUTH USER:', authUser); // ← debug
 
     // 2. Sync to your own user table
     const { data: existing } = await supabase
@@ -52,13 +53,22 @@ exports.register = async (req, res) => {
       .single();
 
     if (!existing) {
-      await supabase.from('user').insert({
-        user_id:    authUser.id,   // ✅ FIXED
-        name,
-        email,
-        status:     'pending',
-        created_at: new Date().toISOString(),
-      });
+      const { data: insertData, error: insertError } = await supabase
+        .from('user')
+        .insert({
+          user_id:    authUser.id,
+          name,
+          email,
+          status:     'pending',
+          created_at: new Date().toISOString(),
+        });
+
+      console.log('INSERT ERROR:', insertError); // ← debug
+      console.log('INSERT DATA:', insertData);   // ← debug
+
+      if (insertError) {
+        return res.status(500).json({ message: insertError.message, details: insertError });
+      }
     }
 
     // 3. Email confirmation OFF → session returned immediately
@@ -78,6 +88,7 @@ exports.register = async (req, res) => {
     });
 
   } catch (err) {
+    console.log('REGISTER CATCH ERROR:', err); // ← debug
     return res.status(500).json({ message: err.message });
   }
 };
@@ -90,7 +101,6 @@ exports.login = async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ message: 'email and password are required' });
 
-    // 1. Sign in via Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -102,7 +112,6 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // 2. Get user from your table
     const { data: user, error } = await supabase
       .from('user')
       .select('user_id, name, email, status, created_at')
@@ -112,7 +121,6 @@ exports.login = async (req, res) => {
     if (!user || error)
       return res.status(404).json({ message: 'User profile not found' });
 
-    // 3. Update status to active on first confirmed login
     if (user.status === 'pending') {
       await supabase.from('user').update({ status: 'active' }).eq('email', email);
       user.status = 'active';
@@ -169,10 +177,10 @@ exports.confirm = async (req, res) => {
 
     if (!user) {
       const name = data.user.user_metadata?.name || email.split('@')[0];
-      const { data: newUser } = await supabase
+      const { data: newUser, error: insertError } = await supabase
         .from('user')
         .insert({
-          user_id:    data.user.id,   // ✅ FIXED
+          user_id:    data.user.id,
           name,
           email,
           status:     'active',
@@ -180,6 +188,8 @@ exports.confirm = async (req, res) => {
         })
         .select('user_id, name, email, status, created_at')
         .single();
+
+      console.log('CONFIRM INSERT ERROR:', insertError); // ← debug
       user = newUser;
     } else if (user.status === 'pending') {
       await supabase.from('user').update({ status: 'active' }).eq('email', email);
@@ -216,10 +226,10 @@ exports.session = async (req, res) => {
 
     if (!user) {
       const name = data.user.user_metadata?.name || email.split('@')[0];
-      const { data: newUser } = await supabase
+      const { data: newUser, error: insertError } = await supabase
         .from('user')
         .insert({
-          user_id:    data.user.id,   // ✅ FIXED
+          user_id:    data.user.id,
           name,
           email,
           status:     'active',
@@ -227,6 +237,8 @@ exports.session = async (req, res) => {
         })
         .select('user_id, name, email, status, created_at')
         .single();
+
+      console.log('SESSION INSERT ERROR:', insertError); // ← debug
       user = newUser;
     }
 
