@@ -1,9 +1,10 @@
 const supabase = require('../config/supabase');
 
-// POST /api/messages
+// POST /api/messages OR POST /api/channels/:channelId/messages
 const sendMessage = async (req, res) => {
   try {
-    const { channel_id, content, parent_message_id } = req.body;
+    const channel_id = req.body.channel_id || req.params.channelId; // ✅ both ways
+    const { content, parent_message_id } = req.body;
     const user_id = req.user.user_id;
 
     if (!channel_id || !content) {
@@ -45,7 +46,6 @@ const sendMessage = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Emit to socket room
     const io = req.app.get('io');
     if (io) {
       io.to(channel_id).emit('new_message', message);
@@ -57,10 +57,10 @@ const sendMessage = async (req, res) => {
   }
 };
 
-// GET /api/messages/:channelId
+// GET /api/messages/:channelId OR GET /api/channels/:channelId/messages
 const getMessages = async (req, res) => {
   try {
-    const { channelId } = req.params;
+    const channelId = req.params.channelId; // ✅ works for both routes
     const { limit = 50, before } = req.query;
     const user_id = req.user.user_id;
 
@@ -90,7 +90,7 @@ const getMessages = async (req, res) => {
         files:file (file_id, file_name, file_url, size)
       `)
       .eq('channel_id', channelId)
-      .is('parent_message_id', null) // only top-level messages
+      .is('parent_message_id', null)
       .order('created_at', { ascending: false })
       .limit(Number(limit));
 
@@ -102,7 +102,7 @@ const getMessages = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    return res.json(messages.reverse()); // return oldest first
+    return res.json(messages.reverse());
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -114,7 +114,6 @@ const getThread = async (req, res) => {
     const { messageId } = req.params;
     const user_id = req.user.user_id;
 
-    // Get parent message to check channel membership
     const { data: parent } = await supabase
       .from('message')
       .select('channel_id')
@@ -163,7 +162,6 @@ const editMessage = async (req, res) => {
 
     if (!content) return res.status(400).json({ error: 'content is required' });
 
-    // Check ownership
     const { data: existing } = await supabase
       .from('message')
       .select('user_id, channel_id')
@@ -253,7 +251,6 @@ const addReaction = async (req, res) => {
 
     if (!message) return res.status(404).json({ error: 'Message not found' });
 
-    // Upsert reaction (prevent duplicates)
     const { data: reaction, error } = await supabase
       .from('reaction')
       .upsert({

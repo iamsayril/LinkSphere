@@ -20,5 +20,7 @@ router.post('/:channelId/join', joinChannel);
 router.delete('/:channelId/leave', leaveChannel);
 router.patch('/:channelId', updateChannel);
 router.delete('/:channelId', deleteChannel);
+router.get('/:channelId/messages', getMessages);
+router.post('/:channelId/messages', sendMessage);
 
 module.exports = router;
