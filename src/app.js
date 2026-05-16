@@ -12,6 +12,7 @@ const userRoutes = require("./routes/userRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const fileRoutes = require("./routes/fileRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/files", fileRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Root
 app.get("/", (req, res) => {
