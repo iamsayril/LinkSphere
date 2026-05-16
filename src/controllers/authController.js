@@ -33,7 +33,6 @@ exports.register = async (req, res) => {
       password,
       options: {
         data: { name }
-        // emailRedirectTo not needed — Supabase uses Site URL from dashboard
       }
     });
 
@@ -54,6 +53,7 @@ exports.register = async (req, res) => {
 
     if (!existing) {
       await supabase.from('user').insert({
+        user_id:    authUser.id,   // ✅ FIXED
         name,
         email,
         status:     'pending',
@@ -144,7 +144,6 @@ exports.me = async (req, res) => {
 };
 
 // ─── POST /api/auth/confirm ───────────────────────────────────────────────────
-// Called by frontend when Supabase redirects with ?token_hash=XXX&type=signup
 exports.confirm = async (req, res) => {
   try {
     const { token_hash, type } = req.body;
@@ -152,10 +151,9 @@ exports.confirm = async (req, res) => {
     if (!token_hash || !type)
       return res.status(400).json({ message: 'token_hash and type are required' });
 
-    // Exchange token_hash for a session
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash,
-      type  // 'signup'
+      type
     });
 
     if (error || !data.user)
@@ -163,7 +161,6 @@ exports.confirm = async (req, res) => {
 
     const email = data.user.email;
 
-    // Get or create user row
     let { data: user } = await supabase
       .from('user')
       .select('user_id, name, email, status, created_at')
@@ -175,6 +172,7 @@ exports.confirm = async (req, res) => {
       const { data: newUser } = await supabase
         .from('user')
         .insert({
+          user_id:    data.user.id,   // ✅ FIXED
           name,
           email,
           status:     'active',
@@ -196,7 +194,6 @@ exports.confirm = async (req, res) => {
 };
 
 // ─── POST /api/auth/session ───────────────────────────────────────────────────
-// Called by frontend for legacy implicit flow (access_token in URL hash)
 exports.session = async (req, res) => {
   try {
     const { access_token, refresh_token } = req.body;
@@ -204,7 +201,6 @@ exports.session = async (req, res) => {
     if (!access_token)
       return res.status(400).json({ message: 'access_token is required' });
 
-    // Verify the token with Supabase
     const { data, error } = await supabase.auth.getUser(access_token);
 
     if (error || !data.user)
@@ -223,6 +219,7 @@ exports.session = async (req, res) => {
       const { data: newUser } = await supabase
         .from('user')
         .insert({
+          user_id:    data.user.id,   // ✅ FIXED
           name,
           email,
           status:     'active',
