@@ -17,6 +17,12 @@ app.set('io', io);
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
+  // User room for real-time notifications
+  socket.on('join_user_room', (userId) => {
+    socket.join(`user:${userId}`);
+    console.log(`👤 ${socket.id} joined user room: ${userId}`);
+  });
+
   socket.on('join_channel', (channelId) => {
     socket.join(channelId);
     console.log(`👤 ${socket.id} joined channel: ${channelId}`);
