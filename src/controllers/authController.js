@@ -1,5 +1,5 @@
-const jwt      = require('jsonwebtoken');
-const supabase = require('../config/supabase');
+const jwt                        = require('jsonwebtoken');
+const { supabase, supabaseAdmin } = require('../config/supabase');
 
 // ─── Helper: generate your app JWT from a user row ───────────────────────────
 function makeToken(user) {
@@ -27,13 +27,10 @@ exports.register = async (req, res) => {
     if (password.length < 6)
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
 
-    // 1. Create user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { name }
-      }
+      options: { data: { name } }
     });
 
     if (authError) {
@@ -43,9 +40,8 @@ exports.register = async (req, res) => {
     }
 
     const authUser = authData.user;
-    console.log('AUTH USER:', authUser); // ← debug
+    console.log('AUTH USER:', authUser);
 
-    // 2. Sync to your own user table
     const { data: existing } = await supabase
       .from('user')
       .select('user_id')
@@ -63,15 +59,14 @@ exports.register = async (req, res) => {
           created_at: new Date().toISOString(),
         });
 
-      console.log('INSERT ERROR:', insertError); // ← debug
-      console.log('INSERT DATA:', insertData);   // ← debug
+      console.log('INSERT ERROR:', insertError);
+      console.log('INSERT DATA:', insertData);
 
       if (insertError) {
         return res.status(500).json({ message: insertError.message, details: insertError });
       }
     }
 
-    // 3. Email confirmation OFF → session returned immediately
     if (authData.session) {
       const { data: user } = await supabase
         .from('user')
@@ -82,13 +77,12 @@ exports.register = async (req, res) => {
       return res.status(201).json({ token: makeToken(user), user: safeUser(user) });
     }
 
-    // 4. Email confirmation ON → tell frontend to check inbox
     return res.status(201).json({
       message: 'Confirmation email sent. Please check your inbox.'
     });
 
   } catch (err) {
-    console.log('REGISTER CATCH ERROR:', err); // ← debug
+    console.log('REGISTER CATCH ERROR:', err);
     return res.status(500).json({ message: err.message });
   }
 };
@@ -159,10 +153,7 @@ exports.confirm = async (req, res) => {
     if (!token_hash || !type)
       return res.status(400).json({ message: 'token_hash and type are required' });
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      token_hash,
-      type
-    });
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash, type });
 
     if (error || !data.user)
       return res.status(400).json({ message: 'Invalid or expired confirmation link' });
@@ -189,7 +180,7 @@ exports.confirm = async (req, res) => {
         .select('user_id, name, email, status, created_at')
         .single();
 
-      console.log('CONFIRM INSERT ERROR:', insertError); // ← debug
+      console.log('CONFIRM INSERT ERROR:', insertError);
       user = newUser;
     } else if (user.status === 'pending') {
       await supabase.from('user').update({ status: 'active' }).eq('email', email);
@@ -238,7 +229,7 @@ exports.session = async (req, res) => {
         .select('user_id, name, email, status, created_at')
         .single();
 
-      console.log('SESSION INSERT ERROR:', insertError); // ← debug
+      console.log('SESSION INSERT ERROR:', insertError);
       user = newUser;
     }
 

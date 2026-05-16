@@ -1,5 +1,4 @@
-const supabase = require('../config/supabase');
-const bcrypt = require("bcryptjs"); // ← change this in both files
+const { supabase, supabaseAdmin } = require('../config/supabase');
 
 // GET /api/users/profile
 const getProfile = async (req, res) => {
@@ -59,32 +58,41 @@ const updatePassword = async (req, res) => {
       return res.status(400).json({ error: 'current_password and new_password are required' });
     }
 
-    // Get current password hash
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Get user email
     const { data: user, error } = await supabase
       .from('user')
-      .select('password_hash')
+      .select('email')
       .eq('user_id', user_id)
       .single();
 
     if (!user || error) return res.status(404).json({ error: 'User not found' });
 
-    // Verify current password
-    const validPassword = await bcrypt.compare(current_password, user.password_hash);
-    if (!validPassword) {
+    // Verify current password by signing in
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email:    user.email,
+      password: current_password,
+    });
+
+    if (signInError) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
-    // Hash new password
-    const password_hash = await bcrypt.hash(new_password, 10);
+    // Update password via Supabase Auth admin
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user_id,
+      { password: new_password }
+    );
 
-    const { error: updateError } = await supabase
-      .from('user')
-      .update({ password_hash })
-      .eq('user_id', user_id);
-
-    if (updateError) return res.status(500).json({ error: updateError.message });
+    if (updateError) {
+      return res.status(500).json({ error: updateError.message });
+    }
 
     return res.json({ message: 'Password updated successfully' });
+
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -138,24 +146,40 @@ const deleteAccount = async (req, res) => {
 
     if (!password) return res.status(400).json({ error: 'password is required' });
 
-    // Verify password before deleting
+    // Get user email
     const { data: user } = await supabase
       .from('user')
-      .select('password_hash')
+      .select('email')
       .eq('user_id', user_id)
       .single();
 
-    const validPassword = await bcrypt.compare(password, user.password_hash);
-    if (!validPassword) return res.status(401).json({ error: 'Incorrect password' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const { error } = await supabase
+    // Verify password by signing in
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email:    user.email,
+      password: password,
+    });
+
+    if (signInError) {
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+
+    // Delete from public.user table
+    const { error: deleteError } = await supabase
       .from('user')
       .delete()
       .eq('user_id', user_id);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (deleteError) return res.status(500).json({ error: deleteError.message });
+
+    // Delete from Supabase Auth
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+
+    if (authDeleteError) return res.status(500).json({ error: authDeleteError.message });
 
     return res.json({ message: 'Account deleted successfully' });
+
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
