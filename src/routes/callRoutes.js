@@ -21,7 +21,7 @@ const {
   getActiveCall,
   getCallHistory,
   livekitWebhook,
-} = require('../controllers/call.controller');
+} = require('../controllers/callController');  // ✅ matches your actual filename
 
 const { AccessToken } = require('livekit-server-sdk');
 
