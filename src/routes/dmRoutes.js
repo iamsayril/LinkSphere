@@ -5,6 +5,7 @@ const {
   getConversations,
   getDmMessages,
   sendDm,
+  uploadDmFile,
 } = require('../controllers/dmController');
 
 router.use(authenticate);
@@ -12,5 +13,6 @@ router.use(authenticate);
 router.get('/conversations', getConversations);  // GET  /api/dm/conversations
 router.get('/:userId', getDmMessages);            // GET  /api/dm/:userId
 router.post('/', sendDm);                         // POST /api/dm
+router.post('/upload', uploadDmFile);             // POST /api/dm/upload
 
 module.exports = router;
