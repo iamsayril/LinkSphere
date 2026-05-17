@@ -1,9 +1,9 @@
-const supabase = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 
 // POST /api/messages OR POST /api/channels/:channelId/messages
 const sendMessage = async (req, res) => {
   try {
-    const channel_id = req.body.channel_id || req.params.channelId; // ✅ both ways
+    const channel_id = req.body.channel_id || req.params.channelId;
     const { content, parent_message_id } = req.body;
     const user_id = req.user.user_id;
 
@@ -11,7 +11,6 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({ error: 'channel_id and content are required' });
     }
 
-    // Check if user is a member of the channel
     const { data: member } = await supabase
       .from('channel_member')
       .select('channel_member_id')
@@ -47,9 +46,7 @@ const sendMessage = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const io = req.app.get('io');
-    if (io) {
-      io.to(channel_id).emit('new_message', message);
-    }
+    if (io) io.to(channel_id).emit('new_message', message);
 
     return res.status(201).json(message);
   } catch (err) {
@@ -60,11 +57,10 @@ const sendMessage = async (req, res) => {
 // GET /api/messages/:channelId OR GET /api/channels/:channelId/messages
 const getMessages = async (req, res) => {
   try {
-    const channelId = req.params.channelId; // ✅ works for both routes
+    const channelId = req.params.channelId;
     const { limit = 50, before } = req.query;
     const user_id = req.user.user_id;
 
-    // Check membership
     const { data: member } = await supabase
       .from('channel_member')
       .select('channel_member_id')
@@ -94,9 +90,7 @@ const getMessages = async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(Number(limit));
 
-    if (before) {
-      query = query.lt('created_at', before);
-    }
+    if (before) query = query.lt('created_at', before);
 
     const { data: messages, error } = await query;
 
@@ -173,10 +167,7 @@ const editMessage = async (req, res) => {
 
     const { data: message, error } = await supabase
       .from('message')
-      .update({
-        content,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ content, updated_at: new Date().toISOString() })
       .eq('message_id', messageId)
       .select(`
         message_id,
@@ -191,9 +182,7 @@ const editMessage = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const io = req.app.get('io');
-    if (io) {
-      io.to(existing.channel_id).emit('message_edited', message);
-    }
+    if (io) io.to(existing.channel_id).emit('message_edited', message);
 
     return res.json(message);
   } catch (err) {
@@ -224,9 +213,7 @@ const deleteMessage = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const io = req.app.get('io');
-    if (io) {
-      io.to(existing.channel_id).emit('message_deleted', { message_id: messageId, channel_id: existing.channel_id });
-    }
+    if (io) io.to(existing.channel_id).emit('message_deleted', { message_id: messageId, channel_id: existing.channel_id });
 
     return res.json({ message: 'Message deleted successfully' });
   } catch (err) {
@@ -265,9 +252,7 @@ const addReaction = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const io = req.app.get('io');
-    if (io) {
-      io.to(message.channel_id).emit('reaction_added', { message_id: messageId, reaction });
-    }
+    if (io) io.to(message.channel_id).emit('reaction_added', { message_id: messageId, reaction });
 
     return res.status(201).json(reaction);
   } catch (err) {
@@ -297,9 +282,7 @@ const removeReaction = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const io = req.app.get('io');
-    if (io) {
-      io.to(message.channel_id).emit('reaction_removed', { message_id: messageId, emoji, user_id });
-    }
+    if (io) io.to(message.channel_id).emit('reaction_removed', { message_id: messageId, emoji, user_id });
 
     return res.json({ message: 'Reaction removed' });
   } catch (err) {

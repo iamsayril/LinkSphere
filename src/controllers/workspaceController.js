@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 
 // ─── Create Workspace ────────────────────────────────────────────────────────
 const createWorkspace = async (req, res) => {
@@ -9,7 +9,6 @@ const createWorkspace = async (req, res) => {
     return res.status(400).json({ error: 'Workspace name is required' });
   }
 
-  // Create workspace
   const { data: workspace, error: wsError } = await supabase
     .from('workspace')
     .insert({ name, description, user_id, is_public })
@@ -18,7 +17,6 @@ const createWorkspace = async (req, res) => {
 
   if (wsError) return res.status(500).json({ error: wsError.message });
 
-  // Fetch creator's info
   const { data: user, error: userError } = await supabase
     .from('user')
     .select('name, email, status')
@@ -27,7 +25,6 @@ const createWorkspace = async (req, res) => {
 
   if (userError || !user) return res.status(500).json({ error: 'Could not fetch user info' });
 
-  // Auto-add creator as owner member
   const { error: memberError } = await supabase
     .from('workspace_member')
     .insert({
@@ -177,7 +174,6 @@ const addMember = async (req, res) => {
     return res.status(400).json({ error: 'user_id is required' });
   }
 
-  // Only owner/admin can add members
   const { data: requester } = await supabase
     .from('workspace_member')
     .select('role')
@@ -189,7 +185,6 @@ const addMember = async (req, res) => {
     return res.status(403).json({ error: 'Only owners and admins can add members' });
   }
 
-  // Check if already a member
   const { data: existing } = await supabase
     .from('workspace_member')
     .select('workspace_id')
@@ -201,7 +196,6 @@ const addMember = async (req, res) => {
     return res.status(409).json({ error: 'User is already a member of this workspace' });
   }
 
-  // Fetch target user info
   const { data: user, error: userError } = await supabase
     .from('user')
     .select('name, email, status')
@@ -276,7 +270,6 @@ const removeMember = async (req, res) => {
     }
   }
 
-  // Cannot remove the owner
   const { data: workspace } = await supabase
     .from('workspace')
     .select('user_id')

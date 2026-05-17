@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 
 // POST /api/channels
 const createChannel = async (req, res) => {
