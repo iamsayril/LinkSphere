@@ -180,7 +180,7 @@ const uploadDmFile = [
       const fileName  = `dm/${sender_id}/${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('dm-files')
+        .from('linksphere-files')
         .upload(fileName, req.file.buffer, {
           contentType: req.file.mimetype,
           upsert:      false,
@@ -192,7 +192,7 @@ const uploadDmFile = [
 
       // ── Get public URL ────────────────────────────────────────────────────
       const { data: urlData } = supabase.storage
-        .from('dm-files')
+        .from('linksphere-files')
         .getPublicUrl(fileName);
 
       const file_url = urlData.publicUrl;
