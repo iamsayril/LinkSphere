@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { authenticate } = require('../middleware/authMiddleware');
 const {
   createWorkspace,
@@ -7,6 +8,7 @@ const {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
+  uploadWorkspaceIcon,
   addMember,
   getMembers,
   removeMember,
@@ -16,7 +18,11 @@ const {
   joinByCode,
 } = require('../controllers/workspaceController');
 
-// All routes require authentication
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 * 5 }, // 5MB
+});
+
 router.use(authenticate);
 
 // Workspace CRUD
@@ -25,6 +31,14 @@ router.get('/', getMyWorkspaces);
 router.get('/:workspaceId', getWorkspaceById);
 router.patch('/:workspaceId', updateWorkspace);
 router.delete('/:workspaceId', deleteWorkspace);
+
+// Icon upload
+router.patch('/:workspaceId/icon', (req, res, next) => {
+  upload.single('icon')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, uploadWorkspaceIcon);
 
 // Member management
 router.post('/:workspaceId/members', addMember);

@@ -9,8 +9,8 @@ const {
 
 router.use(authenticate);
 
-router.get('/conversations', getConversations);   // GET  /api/messages/conversations
-router.get('/dm/:userId',    getDmMessages);       // GET  /api/messages/dm/:userId
-router.post('/dm',           sendDm);              // POST /api/messages/dm
+router.get('/conversations', getConversations);  // GET  /api/dm/conversations
+router.get('/:userId', getDmMessages);            // GET  /api/dm/:userId
+router.post('/', sendDm);                         // POST /api/dm
 
 module.exports = router;

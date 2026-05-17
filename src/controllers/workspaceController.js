@@ -59,7 +59,7 @@ const getMyWorkspaces = async (req, res) => {
       role,
       join_at,
       workspace (
-        workspace_id, name, description, is_public, user_id, created_at, invite_code
+        workspace_id, name, description, is_public, icon_url, user_id, created_at, invite_code
       )
     `)
     .eq('user_id', user_id);
@@ -168,6 +168,61 @@ const deleteWorkspace = async (req, res) => {
   return res.status(200).json({ message: 'Workspace deleted successfully' });
 };
 
+// ─── Upload Workspace Icon ───────────────────────────────────────────────────
+const uploadWorkspaceIcon = async (req, res) => {
+  const { workspaceId } = req.params;
+  const user_id = req.user.user_id;
+  const file = req.file;
+
+  if (!file) return res.status(400).json({ error: 'No file provided' });
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  if (!allowedTypes.includes(file.mimetype)) {
+    return res.status(400).json({ error: 'Only JPG, PNG, GIF, WEBP allowed' });
+  }
+
+  const { data: member } = await supabase
+    .from('workspace_member')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user_id)
+    .single();
+
+  if (!member || !['owner', 'admin'].includes(member.role)) {
+    return res.status(403).json({ error: 'Only owners and admins can update the icon' });
+  }
+
+  const ext = file.originalname.split('.').pop();
+  const fileName = `workspace-icons/${workspaceId}/icon_${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('linksphere-files')
+    .upload(fileName, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true,
+    });
+
+  if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+  const { data: urlData } = supabase.storage
+    .from('linksphere-files')
+    .getPublicUrl(fileName);
+
+  const { data: workspace, error } = await supabase
+    .from('workspace')
+    .update({ icon_url: urlData.publicUrl })
+    .eq('workspace_id', workspaceId)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const io = req.app.get('io');
+  if (io) io.to(`workspace:${workspaceId}`).emit('workspace:updated', workspace);
+
+  return res.status(200).json(workspace);
+};
+
 // ─── Add Member ──────────────────────────────────────────────────────────────
 const addMember = async (req, res) => {
   const { workspaceId } = req.params;
@@ -246,8 +301,6 @@ const getMembers = async (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this workspace' });
   }
 
-  // Join against the user table so email is always current, not the snapshot
-  // stored at join time. name stays from workspace_member (display name).
   const { data, error } = await supabase
     .from('workspace_member')
     .select(`
@@ -256,19 +309,20 @@ const getMembers = async (req, res) => {
       role,
       status,
       join_at,
-      user:user_id ( email )
+      user:user_id ( email, avatar_url )
     `)
     .eq('workspace_id', workspaceId);
 
   if (error) return res.status(500).json({ error: error.message });
 
   const members = data.map((m) => ({
-    user_id: m.user_id,
-    name:    m.name,
-    email:   m.user?.email || null,
-    role:    m.role,
-    status:  m.status,
-    join_at: m.join_at,
+    user_id:    m.user_id,
+    name:       m.name,
+    email:      m.user?.email || null,
+    avatar_url: m.user?.avatar_url || null,
+    role:       m.role,
+    status:     m.status,
+    join_at:    m.join_at,
   }));
 
   return res.status(200).json(members);
@@ -485,6 +539,7 @@ module.exports = {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
+  uploadWorkspaceIcon,
   addMember,
   getMembers,
   removeMember,

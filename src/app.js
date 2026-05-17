@@ -15,7 +15,6 @@ const fileRoutes = require("./routes/fileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const dmRoutes = require('./routes/dmRoutes');
 
-
 const app = express();
 
 // Supabase client
@@ -27,7 +26,7 @@ const supabase = createClient(
 // Security
 app.use(helmet());
 
-// ✅ CORS must come BEFORE rate limiter so 429 responses still include CORS headers
+// CORS
 const allowedOrigins = [
   'http://127.0.0.1:5500',
   'http://localhost:5500',
@@ -47,7 +46,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// ✅ Rate limiter AFTER CORS — increased to 500 requests per 15 minutes
+// Rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
@@ -68,8 +67,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/admin", adminRoutes);
-app.use('/api/messages', dmRoutes);
-
+app.use("/api/dm", dmRoutes); // ← fixed from /api/messages
 
 // Root
 app.get("/", (req, res) => {
