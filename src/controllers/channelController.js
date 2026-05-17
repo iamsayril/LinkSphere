@@ -24,7 +24,7 @@ const createChannel = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // Auto-add creator as admin
-    await supabase
+    const { error: memberError } = await supabase
       .from('channel_member')
       .insert({
         channel_id: channel.channel_id,
@@ -32,6 +32,12 @@ const createChannel = async (req, res) => {
         role: 'admin',
         joined_at: new Date().toISOString(),
       });
+
+    if (memberError) {
+      // Rollback: delete the channel if member insert fails
+      await supabase.from('channel').delete().eq('channel_id', channel.channel_id);
+      return res.status(500).json({ error: 'Failed to add creator as member: ' + memberError.message });
+    }
 
     return res.status(201).json(channel);
   } catch (err) {
