@@ -25,8 +25,8 @@ const {
 
 const { AccessToken } = require('livekit-server-sdk');
 
-const { authenticate }          = require('../middleware/auth.middleware');
-const { requireWorkspaceAdmin } = require('../middleware/auth.middleware');
+const { authenticate }          = require('../middleware/authMiddleware');
+const { requireWorkspaceAdmin } = require('../middleware/authMiddleware');
 
 // ── LiveKit webhook — no auth, raw body, signature verified inside controller
 router.post(
