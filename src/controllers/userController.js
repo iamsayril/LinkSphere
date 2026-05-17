@@ -23,15 +23,29 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const user_id = req.user.user_id;
-    const { name, status } = req.body;
+    const { name, status, email } = req.body; // ← FIX: extract email
 
-    if (!name && !status) {
-      return res.status(400).json({ error: 'name or status is required' });
+    if (!name && !status && !email) {
+      return res.status(400).json({ error: 'name, status, or email is required' });
     }
 
+    // ── FIX: if email is changing, update Supabase Auth first ──
+    if (email) {
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+        user_id,
+        { email }
+      );
+
+      if (authError) {
+        return res.status(500).json({ error: 'Failed to update email in auth: ' + authError.message });
+      }
+    }
+
+    // ── Update the user table ──
     const updates = {};
-    if (name) updates.name = name;
+    if (name)   updates.name   = name;
     if (status) updates.status = status;
+    if (email)  updates.email  = email; // ← FIX: include email in DB update
 
     const { data: user, error } = await supabase
       .from('user')
@@ -102,7 +116,6 @@ const updateAvatar = async (req, res) => {
 
     if (!file) return res.status(400).json({ error: 'No file provided' });
 
-    // Allowed image types
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedTypes.includes(file.mimetype)) {
       return res.status(400).json({ error: 'Only JPG, PNG, GIF, WEBP allowed' });
@@ -111,7 +124,6 @@ const updateAvatar = async (req, res) => {
     const ext = file.originalname.split('.').pop();
     const fileName = `avatars/${user_id}/avatar_${Date.now()}.${ext}`;
 
-    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('linksphere-files')
       .upload(fileName, file.buffer, {
@@ -121,12 +133,10 @@ const updateAvatar = async (req, res) => {
 
     if (uploadError) return res.status(500).json({ error: uploadError.message });
 
-    // Get public URL
     const { data: urlData } = supabase.storage
       .from('linksphere-files')
       .getPublicUrl(fileName);
 
-    // Update avatar_url in database
     const { data: user, error } = await supabase
       .from('user')
       .update({ avatar_url: urlData.publicUrl })
