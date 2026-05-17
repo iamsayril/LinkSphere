@@ -16,9 +16,8 @@
 
 const { AccessToken, RoomServiceClient, WebhookReceiver } = require('livekit-server-sdk');
 const { supabase }            = require('../config/supabase');
-const wsService               = require('../services/websocket.service');
-const notificationService     = require('../services/notification.service');
-const { createAuditLog }      = require('../services/audit.service');
+const notificationService     = require('../services/notificationService');
+const { createAuditLog }      = require('../services/auditService');
 
 // ─────────────────────────────────────────────
 // LiveKit client
