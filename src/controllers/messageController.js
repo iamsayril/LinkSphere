@@ -40,7 +40,7 @@ const sendMessage = async (req, res) => {
         parent_message_id,
         channel_id,
         user:user_id (user_id, name, email),
-        files:file (file_id, file_name, file_url, size)
+        files:file (file_id, file_name, file_url, file_type, size)
       `)
       .single();
     // ↑ Only change from your original: added files:file(...) so the socket
@@ -87,7 +87,7 @@ const getMessages = async (req, res) => {
         channel_id,
         user:user_id (user_id, name, email),
         reactions:reaction (reaction_id, emoji, user_id),
-        files:file (file_id, file_name, file_url, size)
+        files:file (file_id, file_name, file_url, file_type, size)
       `)
       .eq('channel_id', channelId)
       .is('parent_message_id', null)

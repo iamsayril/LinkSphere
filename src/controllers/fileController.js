@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 
 // POST /api/files/upload
 const uploadFile = async (req, res) => {
@@ -32,16 +32,17 @@ const uploadFile = async (req, res) => {
       .getPublicUrl(fileName);
 
     // Save file record to database
-    const { data: fileRecord, error: dbError } = await supabase
-      .from('file')
-      .insert({
-        file_name: file.originalname,
-        file_url: urlData.publicUrl,
-        size: file.size,
-        uploaded_at: new Date().toISOString(),
-        user_id,
-        message_id: message_id || null,
-      })
+   const { data: fileRecord, error: dbError } = await supabase
+    .from('file')
+    .insert({
+      file_name: file.originalname,
+      file_url: urlData.publicUrl,
+      file_type: file.mimetype,
+      size: file.size,
+      uploaded_at: new Date().toISOString(),
+      user_id,
+      message_id: message_id || null,
+    })
       .select()
       .single();
 
