@@ -25,15 +25,7 @@ const supabase = createClient(
 // Security
 app.use(helmet());
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: "Too many requests, please try again later." },
-});
-app.use(limiter);
-
-// CORS
+// ✅ CORS must come BEFORE rate limiter so 429 responses still include CORS headers
 const allowedOrigins = [
   'http://127.0.0.1:5500',
   'http://localhost:5500',
@@ -44,7 +36,6 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (Postman, mobile apps)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`CORS blocked: ${origin}`));
@@ -53,6 +44,14 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// ✅ Rate limiter AFTER CORS — increased to 500 requests per 15 minutes
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  message: { error: "Too many requests, please try again later." },
+});
+app.use(limiter);
 
 // Core middleware
 app.use(express.json());
