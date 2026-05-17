@@ -153,7 +153,7 @@ const uploadDmFile = [
     try {
       const sender_id   = req.user.user_id;
       const receiver_id = req.body.receiver_id;
-      const content     = req.body.content || null;
+      const content     = req.body.content || '';
 
       if (!receiver_id) {
         return res.status(400).json({ error: 'receiver_id is required' });
