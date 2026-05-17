@@ -23,6 +23,8 @@ const {
   livekitWebhook,
 } = require('../controllers/call.controller');
 
+const { AccessToken } = require('livekit-server-sdk');
+
 const { authenticate }          = require('../middleware/auth.middleware');
 const { requireWorkspaceAdmin } = require('../middleware/auth.middleware');
 
@@ -32,6 +34,37 @@ router.post(
   express.raw({ type: 'application/webhook+json' }),
   livekitWebhook
 );
+
+// ── LiveKit token — generate a JWT for the client to connect
+router.post('/token', authenticate, async (req, res) => {
+  const { roomName, participantName } = req.body;
+
+  if (!roomName || !participantName) {
+    return res.status(400).json({ error: 'roomName and participantName are required' });
+  }
+
+  try {
+    const token = new AccessToken(
+      process.env.LIVEKIT_API_KEY,
+      process.env.LIVEKIT_API_SECRET,
+      { identity: participantName, ttl: '1h' }
+    );
+
+    token.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+    });
+
+    res.json({
+      token: await token.toJwt(),
+      serverUrl: process.env.LIVEKIT_URL,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // All routes below require a valid JWT
 router.use(authenticate);
