@@ -7,7 +7,7 @@ const getProfile = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('user')
-      .select('user_id, name, email, status, created_at')
+      .select('user_id, name, email, status, avatar_url, created_at')
       .eq('user_id', user_id)
       .single();
 
@@ -37,7 +37,7 @@ const updateProfile = async (req, res) => {
       .from('user')
       .update(updates)
       .eq('user_id', user_id)
-      .select('user_id, name, email, status, created_at')
+      .select('user_id, name, email, status, avatar_url, created_at')
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
@@ -62,7 +62,6 @@ const updatePassword = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    // Get user email
     const { data: user, error } = await supabase
       .from('user')
       .select('email')
@@ -71,9 +70,8 @@ const updatePassword = async (req, res) => {
 
     if (!user || error) return res.status(404).json({ error: 'User not found' });
 
-    // Verify current password by signing in
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email:    user.email,
+      email: user.email,
       password: current_password,
     });
 
@@ -81,7 +79,6 @@ const updatePassword = async (req, res) => {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
-    // Update password via Supabase Auth admin
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       user_id,
       { password: new_password }
@@ -92,7 +89,54 @@ const updatePassword = async (req, res) => {
     }
 
     return res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
 
+// PATCH /api/users/avatar
+const updateAvatar = async (req, res) => {
+  try {
+    const user_id = req.user.user_id;
+    const file = req.file;
+
+    if (!file) return res.status(400).json({ error: 'No file provided' });
+
+    // Allowed image types
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return res.status(400).json({ error: 'Only JPG, PNG, GIF, WEBP allowed' });
+    }
+
+    const ext = file.originalname.split('.').pop();
+    const fileName = `avatars/${user_id}/avatar_${Date.now()}.${ext}`;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('linksphere-files')
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true,
+      });
+
+    if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('linksphere-files')
+      .getPublicUrl(fileName);
+
+    // Update avatar_url in database
+    const { data: user, error } = await supabase
+      .from('user')
+      .update({ avatar_url: urlData.publicUrl })
+      .eq('user_id', user_id)
+      .select('user_id, name, email, status, avatar_url, created_at')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json(user);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -107,7 +151,7 @@ const searchUsers = async (req, res) => {
 
     const { data: users, error } = await supabase
       .from('user')
-      .select('user_id, name, email, status')
+      .select('user_id, name, email, status, avatar_url')
       .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
       .limit(10);
 
@@ -126,7 +170,7 @@ const getUserById = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('user')
-      .select('user_id, name, email, status, created_at')
+      .select('user_id, name, email, status, avatar_url, created_at')
       .eq('user_id', userId)
       .single();
 
@@ -146,7 +190,6 @@ const deleteAccount = async (req, res) => {
 
     if (!password) return res.status(400).json({ error: 'password is required' });
 
-    // Get user email
     const { data: user } = await supabase
       .from('user')
       .select('email')
@@ -155,9 +198,8 @@ const deleteAccount = async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Verify password by signing in
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email:    user.email,
+      email: user.email,
       password: password,
     });
 
@@ -165,7 +207,6 @@ const deleteAccount = async (req, res) => {
       return res.status(401).json({ error: 'Incorrect password' });
     }
 
-    // Delete from public.user table
     const { error: deleteError } = await supabase
       .from('user')
       .delete()
@@ -173,13 +214,11 @@ const deleteAccount = async (req, res) => {
 
     if (deleteError) return res.status(500).json({ error: deleteError.message });
 
-    // Delete from Supabase Auth
     const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
 
     if (authDeleteError) return res.status(500).json({ error: authDeleteError.message });
 
     return res.json({ message: 'Account deleted successfully' });
-
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -189,6 +228,7 @@ module.exports = {
   getProfile,
   updateProfile,
   updatePassword,
+  updateAvatar,
   searchUsers,
   getUserById,
   deleteAccount,
