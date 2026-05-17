@@ -50,6 +50,48 @@ io.on('connection', (socket) => {
     socket.to(channelId).emit('user_stop_typing', { user, channelId });
   });
 
+  // ── Voice Call Events ────────────────────────────────────────────────────
+
+  // Caller initiates a call — forward to receiver's user room
+  socket.on('outgoing_call', (data) => {
+    const { receiverId, callerName, callerId, roomName } = data;
+    console.log(`📞 Call from ${callerId} to ${receiverId}, room: ${roomName}`);
+
+    io.to(`user:${receiverId}`).emit('incoming_call', {
+      caller: callerName,
+      callerId,
+      roomName,
+    });
+  });
+
+  // Receiver accepted — forward roomName back to caller's user room
+  socket.on('call_accepted', (data) => {
+    const { callerId, roomName } = data;
+    console.log(`✅ Call accepted, notifying caller: ${callerId}`);
+
+    io.to(`user:${callerId}`).emit('call_accepted', {
+      roomName,
+    });
+  });
+
+  // Receiver declined — notify caller
+  socket.on('call_declined', (data) => {
+    const { callerId } = data;
+    console.log(`❌ Call declined, notifying caller: ${callerId}`);
+
+    io.to(`user:${callerId}`).emit('call_rejected');
+  });
+
+  // Caller cancelled before receiver answered — notify receiver
+  socket.on('call_cancelled_by_initiator', (data) => {
+    const { receiverId } = data;
+    console.log(`🚫 Call cancelled, notifying receiver: ${receiverId}`);
+
+    io.to(`user:${receiverId}`).emit('call_cancelled');
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+
   socket.on('disconnect', () => {
     console.log(`❌ Socket disconnected: ${socket.id}`);
   });
