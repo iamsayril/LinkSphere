@@ -33,8 +33,28 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// CORS
+const allowedOrigins = [
+  'http://127.0.0.1:5500',
+  'http://localhost:5500',
+  'http://127.0.0.1:3000',
+  'http://localhost:3000',
+  process.env.CORS_ORIGIN,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Postman, mobile apps)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 // Core middleware
-app.use(cors());
 app.use(express.json());
 
 // Routes
@@ -62,7 +82,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Error handler ← added
+// Error handler
 app.use((err, req, res, next) => {
   console.error('Global error:', err);
   return res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
