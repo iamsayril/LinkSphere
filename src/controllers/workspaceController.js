@@ -55,7 +55,7 @@ const getMyWorkspaces = async (req, res) => {
       role,
       join_at,
       workspace (
-        workspace_id, name, description, is_public, user_id, icon_url, created_at
+        workspace_id, name, description, is_public, user_id, created_at
       )
     `)
     .eq('user_id', user_id);
@@ -133,65 +133,6 @@ const updateWorkspace = async (req, res) => {
   if (io) io.to(`workspace:${workspaceId}`).emit('workspace:updated', data);
 
   return res.status(200).json(data);
-};
-
-// ─── Upload Workspace Icon ───────────────────────────────────────────────────
-const updateWorkspaceIcon = async (req, res) => {
-  const { workspaceId } = req.params;
-  const user_id = req.user.user_id;
-  const file = req.file;
-
-  if (!file) return res.status(400).json({ error: 'No file provided' });
-
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-  if (!allowedTypes.includes(file.mimetype)) {
-    return res.status(400).json({ error: 'Only JPG, PNG, GIF, WEBP allowed' });
-  }
-
-  // Check user is owner or admin
-  const { data: member } = await supabase
-    .from('workspace_member')
-    .select('role')
-    .eq('workspace_id', workspaceId)
-    .eq('user_id', user_id)
-    .single();
-
-  if (!member || !['owner', 'admin'].includes(member.role)) {
-    return res.status(403).json({ error: 'Only owners and admins can update the workspace icon' });
-  }
-
-  const ext = file.originalname.split('.').pop();
-  const fileName = `workspace-icons/${workspaceId}/icon_${Date.now()}.${ext}`;
-
-  // Upload to Supabase Storage
-  const { error: uploadError } = await supabase.storage
-    .from('linksphere-files')
-    .upload(fileName, file.buffer, {
-      contentType: file.mimetype,
-      upsert: true,
-    });
-
-  if (uploadError) return res.status(500).json({ error: uploadError.message });
-
-  // Get public URL
-  const { data: urlData } = supabase.storage
-    .from('linksphere-files')
-    .getPublicUrl(fileName);
-
-  // Save icon_url to workspace table
-  const { data: workspace, error } = await supabase
-    .from('workspace')
-    .update({ icon_url: urlData.publicUrl })
-    .eq('workspace_id', workspaceId)
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  const io = req.app.get('io');
-  if (io) io.to(`workspace:${workspaceId}`).emit('workspace:updated', workspace);
-
-  return res.status(200).json(workspace);
 };
 
 // ─── Delete Workspace ────────────────────────────────────────────────────────
@@ -393,7 +334,6 @@ module.exports = {
   getMyWorkspaces,
   getWorkspaceById,
   updateWorkspace,
-  updateWorkspaceIcon,
   deleteWorkspace,
   addMember,
   getMembers,
