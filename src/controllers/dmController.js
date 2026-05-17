@@ -1,5 +1,7 @@
 const { supabase } = require('../config/supabase');
 const multer = require('multer');
+const https  = require('https');
+const http   = require('http');
 
 // ─── Multer (in-memory storage) ───────────────────────────────────────────────
 
@@ -230,4 +232,71 @@ const uploadDmFile = [
   }
 ];
 
-module.exports = { getConversations, getDmMessages, sendDm, uploadDmFile };
+// ─── GET /api/dm/proxy-video ──────────────────────────────────────────────────
+// Proxies Supabase Storage video URLs with proper Range header forwarding,
+// which is required for browsers to stream video continuously (206 responses).
+
+const proxyVideo = (req, res) => {
+  const { url } = req.query;
+
+  if (!url) {
+    return res.status(400).json({ error: 'Missing url param' });
+  }
+
+  // Validate URL and restrict to your Supabase storage domain only
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+
+  const allowedHost = process.env.SUPABASE_URL
+    ? new URL(process.env.SUPABASE_URL).hostname
+    : null;
+
+  if (allowedHost && parsed.hostname !== allowedHost) {
+    return res.status(403).json({ error: 'Forbidden: URL not from allowed storage host' });
+  }
+
+  // Forward Range header from browser so Supabase returns 206 Partial Content
+  const upstreamHeaders = {};
+  if (req.headers['range']) {
+    upstreamHeaders['Range'] = req.headers['range'];
+  }
+
+  const client = parsed.protocol === 'https:' ? https : http;
+
+  const upstream = client.request(url, { headers: upstreamHeaders }, (upstreamRes) => {
+    // Pass through only the headers the browser needs for streaming
+    const passthroughHeaders = [
+      'content-type',
+      'content-length',
+      'content-range',
+      'accept-ranges',
+      'last-modified',
+      'etag',
+      'cache-control',
+    ];
+
+    res.status(upstreamRes.statusCode);
+
+    passthroughHeaders.forEach(h => {
+      if (upstreamRes.headers[h]) res.setHeader(h, upstreamRes.headers[h]);
+    });
+
+    // Always declare range support so browser knows it can stream
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    upstreamRes.pipe(res);
+  });
+
+  upstream.on('error', (err) => {
+    console.error('[proxyVideo] Upstream error:', err.message);
+    if (!res.headersSent) res.status(502).json({ error: 'Proxy upstream failed' });
+  });
+
+  upstream.end();
+};
+
+module.exports = { getConversations, getDmMessages, sendDm, uploadDmFile, proxyVideo };

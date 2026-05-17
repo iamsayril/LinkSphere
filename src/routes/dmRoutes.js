@@ -6,13 +6,15 @@ const {
   getDmMessages,
   sendDm,
   uploadDmFile,
+  proxyVideo,
 } = require('../controllers/dmController');
 
 router.use(authenticate);
 
 router.get('/conversations', getConversations);  // GET  /api/dm/conversations
-router.get('/:userId', getDmMessages);            // GET  /api/dm/:userId
-router.post('/', sendDm);                         // POST /api/dm
-router.post('/upload', uploadDmFile);             // POST /api/dm/upload
+router.get('/proxy-video',   proxyVideo);         // GET  /api/dm/proxy-video?url=...
+router.post('/upload',       uploadDmFile);       // POST /api/dm/upload
+router.post('/',             sendDm);             // POST /api/dm
+router.get('/:userId',       getDmMessages);      // GET  /api/dm/:userId  ← must be last
 
 module.exports = router;
