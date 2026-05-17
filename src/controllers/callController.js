@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * call.controller.js
+ * callController.js
  * LinkSphere — Voice & Video Call Controller
  *
  * Covers SRS requirements:
@@ -12,20 +12,16 @@
  *   REQ-16  Visual indicator + notification when a call is active
  *   REQ-17  Mute / camera / end-call controls (token grants)
  *   REQ-18  Chat messages and files shared during a call are persisted
- *
- * LiveKit handles all WebRTC media transport.
- * Supabase stores all business-layer call metadata.
- * Your existing WebSocket service handles call event notifications.
  */
 
 const { AccessToken, RoomServiceClient, WebhookReceiver } = require('livekit-server-sdk');
-const { query }               = require('../config/database');
+const { supabase }            = require('../config/supabase');
 const wsService               = require('../services/websocket.service');
 const notificationService     = require('../services/notification.service');
 const { createAuditLog }      = require('../services/audit.service');
 
 // ─────────────────────────────────────────────
-// LiveKit client — initialised once at module load
+// LiveKit client
 // ─────────────────────────────────────────────
 const LK_URL    = process.env.LIVEKIT_URL;
 const LK_KEY    = process.env.LIVEKIT_API_KEY;
@@ -43,17 +39,6 @@ const roomService = new RoomServiceClient(LK_URL, LK_KEY, LK_SECRET);
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
-
-/**
- * generateToken
- * Issues a signed JWT that the frontend passes directly to LiveKit.
- * The token encodes exactly what this participant is allowed to do.
- *
- * @param {string} roomName   - LiveKit room name (= call_id from Supabase)
- * @param {string} userId     - Supabase user_id used as LiveKit identity
- * @param {string} userName   - Display name shown in the LiveKit room
- * @param {object} overrides  - Optional grant overrides (e.g. audio-only)
- */
 function generateToken(roomName, userId, userName, overrides = {}) {
   const at = new AccessToken(LK_KEY, LK_SECRET, {
     identity: userId,
@@ -62,44 +47,19 @@ function generateToken(roomName, userId, userName, overrides = {}) {
   });
 
   at.addGrant({
-    roomJoin:       true,
-    room:           roomName,
-
-    // REQ-13: publish audio + video
-    canPublish:     true,
-    // REQ-14: screen share is a publish track too
+    roomJoin:          true,
+    room:              roomName,
+    canPublish:        true,
     canPublishSources: ['camera', 'microphone', 'screen_share', 'screen_share_audio'],
-    // receive all other participants' tracks
-    canSubscribe:   true,
-    // REQ-18: in-call data messages (chat / file notifications)
-    canPublishData: true,
-
-    // caller can control their own room (mute others if admin)
-    roomAdmin:      overrides.roomAdmin ?? false,
-
+    canSubscribe:      true,
+    canPublishData:    true,
+    roomAdmin:         overrides.roomAdmin ?? false,
     ...overrides,
   });
 
   return at.toJwt();
 }
 
-/**
- * getLiveKitRoom
- * Safe wrapper — returns null instead of throwing if the room doesn't exist yet.
- */
-async function getLiveKitRoom(roomName) {
-  try {
-    const rooms = await roomService.listRooms([roomName]);
-    return rooms.find(r => r.name === roomName) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * safeDeleteRoom
- * Deletes a LiveKit room without crashing if it was already cleaned up.
- */
 async function safeDeleteRoom(roomName) {
   try {
     await roomService.deleteRoom(roomName);
@@ -111,16 +71,6 @@ async function safeDeleteRoom(roomName) {
 // ─────────────────────────────────────────────
 // REQ-12: Start a call
 // ─────────────────────────────────────────────
-/**
- * POST /api/v1/calls
- * Body: { channel_id, call_type? }
- *
- * 1. Writes a call row to Supabase
- * 2. Creates the room in LiveKit
- * 3. Adds the caller as the first participant
- * 4. Notifies channel members via WebSocket + in-app notification (REQ-16)
- * 5. Returns the LiveKit URL + signed JWT to the caller
- */
 const startCall = async (req, res, next) => {
   try {
     const { channel_id, call_type = 'video' } = req.body;
@@ -131,96 +81,99 @@ const startCall = async (req, res, next) => {
       return res.status(400).json({ error: 'channel_id is required' });
     }
 
-    // Verify the user is a member of this channel's workspace
-    const access = await query(
-      `SELECT c.channel_id, c.workspace_id
-       FROM public.channel c
-       JOIN public.workspace_member wm ON wm.user_id = $1
-       JOIN public.user u ON u.user_id = wm.user_id AND u.email = wm.email
-       WHERE c.channel_id = $2`,
-      [userId, channel_id]
-    );
+    // Verify the user is a workspace member for this channel
+    const { data: access, error: accessError } = await supabase
+      .from('channel')
+      .select('channel_id, workspace_id, workspace_member!inner(user_id)')
+      .eq('channel_id', channel_id)
+      .eq('workspace_member.user_id', userId)
+      .single();
 
-    if (access.rows.length === 0) {
+    if (accessError || !access) {
       return res.status(403).json({ error: 'You are not a member of this channel' });
     }
 
-    // Check there is no active call already running in this channel
-    const existing = await query(
-      `SELECT call_id FROM public.call
-       WHERE channel_id = $1 AND end_time IS NULL
-       LIMIT 1`,
-      [channel_id]
-    );
+    // Check no active call is already running in this channel
+    const { data: existing } = await supabase
+      .from('call')
+      .select('call_id')
+      .eq('channel_id', channel_id)
+      .is('end_time', null)
+      .limit(1)
+      .single();
 
-    if (existing.rows.length > 0) {
+    if (existing) {
       return res.status(409).json({
         error:   'A call is already active in this channel',
-        call_id: existing.rows[0].call_id,
+        call_id: existing.call_id,
       });
     }
 
-    // ── Supabase: create call row ────────────────────────────────────────
-    const callResult = await query(
-      `INSERT INTO public.call
-         (started_by, channel_id, call_type, livekit_room, max_participants)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [userId, channel_id, call_type, null, call_type === 'audio' ? 999 : 25]
-    );
+    // Create call row
+    const { data: call, error: callError } = await supabase
+      .from('call')
+      .insert({
+        started_by:      userId,
+        channel_id,
+        call_type,
+        livekit_room:    null,
+        max_participants: call_type === 'audio' ? 999 : 25,
+      })
+      .select()
+      .single();
 
-    const call = callResult.rows[0];
+    if (callError) throw callError;
 
-    // Use call_id as the LiveKit room name — keeps everything linked without
-    // an extra FK column.
     const roomName = call.call_id;
 
-    // ── LiveKit: provision the room ──────────────────────────────────────
+    // Create LiveKit room
     await roomService.createRoom({
       name:            roomName,
-      emptyTimeout:    300,   // auto-close after 5 min empty  (REQ-16: persistent voice)
-      maxParticipants: call_type === 'audio' ? 0 : 25,  // 0 = unlimited for audio-only
+      emptyTimeout:    300,
+      maxParticipants: call_type === 'audio' ? 0 : 25,
       metadata:        JSON.stringify({
         channel_id,
-        workspace_id: access.rows[0].workspace_id,
+        workspace_id: access.workspace_id,
         started_by:   userId,
         call_type,
       }),
     });
 
-    // Store the room name back on the call row
-    await query(
-      `UPDATE public.call SET livekit_room = $1 WHERE call_id = $2`,
-      [roomName, call.call_id]
-    );
+    // Store room name on call row
+    const { error: updateError } = await supabase
+      .from('call')
+      .update({ livekit_room: roomName })
+      .eq('call_id', call.call_id);
 
-    // ── Supabase: first participant ───────────────────────────────────────
-    await query(
-      `INSERT INTO public.call_participant
-         (call_id, user_id, livekit_identity, audio_enabled, video_enabled)
-       VALUES ($1, $2, $3, TRUE, $4)`,
-      [call.call_id, userId, userId, call_type !== 'audio']
-    );
+    if (updateError) throw updateError;
 
-    // ── Audit log ─────────────────────────────────────────────────────────
+    // Add caller as first participant
+    const { error: participantError } = await supabase
+      .from('call_participant')
+      .insert({
+        call_id:          call.call_id,
+        user_id:          userId,
+        livekit_identity: userId,
+        audio_enabled:    true,
+        video_enabled:    call_type !== 'audio',
+      });
+
+    if (participantError) throw participantError;
+
+    // Audit log
     await createAuditLog({
       action_type:  'CALL_STARTED',
       type:         'call',
       status:       'success',
-      workspace_id: access.rows[0].workspace_id,
+      workspace_id: access.workspace_id,
       channel_id,
       user_id:      userId,
     });
 
-    // ── REQ-16: Notify channel members ────────────────────────────────────
+    // Notify channel members (REQ-16)
     wsService.broadcastToChannel(channel_id, {
       event: 'CALL_STARTED',
-      data:  {
-        call_id:    call.call_id,
-        started_by: userId,
-        call_type,
-        channel_id,
-      },
+      data:  { call_id: call.call_id, started_by: userId, call_type, channel_id },
     });
 
     await notificationService.notifyChannelMembers({
@@ -230,7 +183,6 @@ const startCall = async (req, res, next) => {
       excludeUserId: userId,
     });
 
-    // ── Response ──────────────────────────────────────────────────────────
     return res.status(201).json({
       call: { ...call, livekit_room: roomName },
       livekit: {
@@ -246,108 +198,86 @@ const startCall = async (req, res, next) => {
 // ─────────────────────────────────────────────
 // REQ-12, REQ-16: Join an active call
 // ─────────────────────────────────────────────
-/**
- * POST /api/v1/calls/:callId/join
- * Body: { audio_only? }
- *
- * Returns a fresh LiveKit JWT so the client can connect directly to the room.
- */
 const joinCall = async (req, res, next) => {
   try {
-    const { callId }          = req.params;
+    const { callId }             = req.params;
     const { audio_only = false } = req.body;
-    const userId              = req.user.user_id;
-    const userName            = req.user.name;
+    const userId                 = req.user.user_id;
+    const userName               = req.user.name;
 
-    // ── Verify call exists and is still active ────────────────────────────
-    const callResult = await query(
-      `SELECT c.*, ch.workspace_id
-       FROM public.call c
-       JOIN public.channel ch ON ch.channel_id = c.channel_id
-       WHERE c.call_id = $1 AND c.end_time IS NULL`,
-      [callId]
-    );
+    // Verify call exists and is active
+    const { data: call, error: callError } = await supabase
+      .from('call')
+      .select('*, channel(workspace_id)')
+      .eq('call_id', callId)
+      .is('end_time', null)
+      .single();
 
-    if (callResult.rows.length === 0) {
+    if (callError || !call) {
       return res.status(404).json({ error: 'Call not found or already ended' });
     }
 
-    const call = callResult.rows[0];
-
     // Verify workspace membership
-    const memberCheck = await query(
-      `SELECT wm.user_id FROM public.workspace_member wm
-       JOIN public.user u ON u.email = wm.email
-       WHERE u.user_id = $1`,
-      [userId]
-    );
+    const { data: member } = await supabase
+      .from('workspace_member')
+      .select('user_id')
+      .eq('user_id', userId)
+      .single();
 
-    if (memberCheck.rows.length === 0) {
+    if (!member) {
       return res.status(403).json({ error: 'You are not a member of this workspace' });
     }
 
-    // ── REQ-15: Enforce video participant cap (25) ─────────────────────────
-    if (!audio_only) {
-      const videoCount = await query(
-        `SELECT COUNT(*) as count
-         FROM public.call_participant
-         WHERE call_id = $1 AND video_enabled = TRUE AND left_at IS NULL`,
-        [callId]
-      );
+    // REQ-15: enforce video cap
+    let videoEnabled = !audio_only;
+    if (videoEnabled) {
+      const { count } = await supabase
+        .from('call_participant')
+        .select('*', { count: 'exact', head: true })
+        .eq('call_id', callId)
+        .eq('video_enabled', true)
+        .is('left_at', null);
 
-      if (parseInt(videoCount.rows[0].count) >= 25) {
-        // Still allow join but downgrade to audio-only
+      if (count >= 25) {
         console.info(`[Call] Video cap reached for ${callId} — joining as audio-only`);
-        req.body.audio_only = true;
+        videoEnabled = false;
       }
     }
 
-    const videoEnabled = !req.body.audio_only;
+    // Upsert participant row
+    const { error: upsertError } = await supabase
+      .from('call_participant')
+      .upsert({
+        call_id:          callId,
+        user_id:          userId,
+        livekit_identity: userId,
+        audio_enabled:    true,
+        video_enabled:    videoEnabled,
+        left_at:          null,
+        joined_at:        new Date().toISOString(),
+      }, { onConflict: 'call_id,user_id' });
 
-    // ── Supabase: upsert participant row ──────────────────────────────────
-    // ON CONFLICT handles the case where they previously left and rejoin
-    await query(
-      `INSERT INTO public.call_participant
-         (call_id, user_id, livekit_identity, audio_enabled, video_enabled, left_at)
-       VALUES ($1, $2, $3, TRUE, $4, NULL)
-       ON CONFLICT (call_id, user_id)
-       DO UPDATE SET
-         joined_at        = NOW(),
-         left_at          = NULL,
-         audio_enabled    = TRUE,
-         video_enabled    = $4,
-         livekit_identity = $3`,
-      [callId, userId, userId, videoEnabled]
-    );
+    if (upsertError) throw upsertError;
 
-    // ── Current participant count ─────────────────────────────────────────
-    const countResult = await query(
-      `SELECT COUNT(*) as count
-       FROM public.call_participant
-       WHERE call_id = $1 AND left_at IS NULL`,
-      [callId]
-    );
+    // Current participant count
+    const { count: participantCount } = await supabase
+      .from('call_participant')
+      .select('*', { count: 'exact', head: true })
+      .eq('call_id', callId)
+      .is('left_at', null);
 
-    // ── WebSocket: notify everyone in the call ────────────────────────────
     wsService.broadcastToCall(callId, {
       event: 'PARTICIPANT_JOINED',
-      data:  {
-        call_id:       callId,
-        user_id:       userId,
-        user_name:     userName,
-        video_enabled: videoEnabled,
-      },
+      data:  { call_id: callId, user_id: userId, user_name: userName, video_enabled: videoEnabled },
     });
 
-    // ── Response ──────────────────────────────────────────────────────────
     return res.json({
       call,
-      participant_count: parseInt(countResult.rows[0].count),
+      participant_count: participantCount,
       audio_only:        !videoEnabled,
       livekit: {
         url:   LK_URL,
         token: generateToken(call.livekit_room ?? callId, userId, userName, {
-          // audio-only participants publish mic but not camera
           canPublishSources: videoEnabled
             ? ['camera', 'microphone', 'screen_share', 'screen_share_audio']
             : ['microphone'],
@@ -360,43 +290,36 @@ const joinCall = async (req, res, next) => {
 };
 
 // ─────────────────────────────────────────────
-// Leave a call (self-initiated)
+// Leave a call
 // ─────────────────────────────────────────────
-/**
- * POST /api/v1/calls/:callId/leave
- *
- * Marks the participant as left. If the room is now empty,
- * the call is ended automatically.
- */
 const leaveCall = async (req, res, next) => {
   try {
     const { callId } = req.params;
     const userId     = req.user.user_id;
 
     // Mark participant as left
-    await query(
-      `UPDATE public.call_participant
-       SET left_at = NOW()
-       WHERE call_id = $1 AND user_id = $2`,
-      [callId, userId]
-    );
+    const { error } = await supabase
+      .from('call_participant')
+      .update({ left_at: new Date().toISOString() })
+      .eq('call_id', callId)
+      .eq('user_id', userId);
 
-    // How many are still in the call?
-    const remaining = await query(
-      `SELECT COUNT(*) as count
-       FROM public.call_participant
-       WHERE call_id = $1 AND left_at IS NULL`,
-      [callId]
-    );
+    if (error) throw error;
 
-    const remainingCount = parseInt(remaining.rows[0].count);
+    // Count remaining participants
+    const { count: remainingCount } = await supabase
+      .from('call_participant')
+      .select('*', { count: 'exact', head: true })
+      .eq('call_id', callId)
+      .is('left_at', null);
 
     if (remainingCount === 0) {
-      // Last person left — auto-end the call
-      await query(
-        `UPDATE public.call SET end_time = NOW() WHERE call_id = $1`,
-        [callId]
-      );
+      // Last person — auto-end
+      await supabase
+        .from('call')
+        .update({ end_time: new Date().toISOString() })
+        .eq('call_id', callId);
+
       await safeDeleteRoom(callId);
 
       wsService.broadcastToCall(callId, {
@@ -410,11 +333,10 @@ const leaveCall = async (req, res, next) => {
       });
     }
 
-    // Also remove from LiveKit room so their track is released immediately
     try {
       await roomService.removeParticipant(callId, userId);
     } catch {
-      // They may have already disconnected on the client side — that's fine
+      // Already disconnected client-side — fine
     }
 
     return res.json({ message: 'Left call successfully', remaining: remainingCount });
@@ -426,33 +348,21 @@ const leaveCall = async (req, res, next) => {
 // ─────────────────────────────────────────────
 // REQ-17: End call (host or admin)
 // ─────────────────────────────────────────────
-/**
- * POST /api/v1/calls/:callId/end
- *
- * Only the call host or a workspace admin can force-end a call.
- * Deletes the LiveKit room, marks all participants as left,
- * and broadcasts CALL_ENDED to all connected clients.
- */
 const endCall = async (req, res, next) => {
   try {
     const { callId } = req.params;
     const userId     = req.user.user_id;
 
-    const callResult = await query(
-      `SELECT c.*, ch.workspace_id
-       FROM public.call c
-       JOIN public.channel ch ON ch.channel_id = c.channel_id
-       WHERE c.call_id = $1`,
-      [callId]
-    );
+    const { data: call, error: callError } = await supabase
+      .from('call')
+      .select('*, channel(workspace_id)')
+      .eq('call_id', callId)
+      .single();
 
-    if (callResult.rows.length === 0) {
+    if (callError || !call) {
       return res.status(404).json({ error: 'Call not found' });
     }
 
-    const call = callResult.rows[0];
-
-    // Only host or workspace admin may end the call (REQ-17)
     const isHost  = call.started_by === userId;
     const isAdmin = req.user.role === 'admin';
 
@@ -462,39 +372,35 @@ const endCall = async (req, res, next) => {
       });
     }
 
-    // ── Supabase: close the call and all participant records ──────────────
-    await query(
-      `UPDATE public.call SET end_time = NOW() WHERE call_id = $1`,
-      [callId]
-    );
+    // Close call
+    await supabase
+      .from('call')
+      .update({ end_time: new Date().toISOString() })
+      .eq('call_id', callId);
 
-    await query(
-      `UPDATE public.call_participant
-       SET left_at = NOW()
-       WHERE call_id = $1 AND left_at IS NULL`,
-      [callId]
-    );
+    // Mark all participants as left
+    await supabase
+      .from('call_participant')
+      .update({ left_at: new Date().toISOString() })
+      .eq('call_id', callId)
+      .is('left_at', null);
 
-    // ── LiveKit: tear down the room ───────────────────────────────────────
     await safeDeleteRoom(call.livekit_room ?? callId);
 
-    // ── Audit log ─────────────────────────────────────────────────────────
     await createAuditLog({
       action_type:  'CALL_ENDED',
       type:         'call',
       status:       'success',
-      workspace_id: call.workspace_id,
+      workspace_id: call.channel?.workspace_id,
       channel_id:   call.channel_id,
       user_id:      userId,
     });
 
-    // ── WebSocket: notify all call participants ────────────────────────────
     wsService.broadcastToCall(callId, {
       event: 'CALL_ENDED',
       data:  { call_id: callId, ended_by: userId, reason: 'host_ended' },
     });
 
-    // Also notify the channel so the active-call indicator is cleared (REQ-16)
     if (call.channel_id) {
       wsService.broadcastToChannel(call.channel_id, {
         event: 'CALL_ENDED',
@@ -509,61 +415,43 @@ const endCall = async (req, res, next) => {
 };
 
 // ─────────────────────────────────────────────
-// REQ-15: Get participants in a call
+// REQ-15: Get participants
 // ─────────────────────────────────────────────
-/**
- * GET /api/v1/calls/:callId/participants
- *
- * Returns Supabase records (joined + who has left) merged with
- * live LiveKit participant state where available.
- */
 const getCallParticipants = async (req, res, next) => {
   try {
     const { callId } = req.params;
 
-    // Supabase participant records
-    const dbResult = await query(
-      `SELECT
-         cp.callparticipant_id,
-         cp.user_id,
-         cp.joined_at,
-         cp.left_at,
-         cp.audio_enabled,
-         cp.video_enabled,
-         cp.livekit_identity,
-         u.name,
-         u.email
-       FROM public.call_participant cp
-       JOIN public.user u ON u.user_id = cp.user_id
-       WHERE cp.call_id = $1
-       ORDER BY cp.joined_at ASC`,
-      [callId]
-    );
+    const { data: dbParticipants, error } = await supabase
+      .from('call_participant')
+      .select('callparticipant_id, user_id, joined_at, left_at, audio_enabled, video_enabled, livekit_identity, user(name, email)')
+      .eq('call_id', callId)
+      .order('joined_at', { ascending: true });
 
-    // Merge with live LiveKit state (track mute status, connection quality)
+    if (error) throw error;
+
     let liveParticipants = [];
     try {
       liveParticipants = await roomService.listParticipants(callId);
     } catch {
-      // Room may not exist (call already ended) — return DB data only
+      // Room may already be gone
     }
 
     const liveMap = new Map(liveParticipants.map(p => [p.identity, p]));
 
-    const participants = dbResult.rows.map(row => {
+    const participants = dbParticipants.map(row => {
       const live = liveMap.get(row.livekit_identity);
       return {
         ...row,
+        name:               row.user?.name,
+        email:              row.user?.email,
         is_online:          !!live,
         connection_quality: live?.connectionQuality ?? null,
         is_speaking:        live?.isSpeaking        ?? false,
-        tracks: live
-          ? {
-              audio: live.tracks?.find(t => t.type === 'AUDIO')  ?? null,
-              video: live.tracks?.find(t => t.type === 'VIDEO')  ?? null,
-              screen: live.tracks?.find(t => t.type === 'SCREEN') ?? null,
-            }
-          : null,
+        tracks: live ? {
+          audio:  live.tracks?.find(t => t.type === 'AUDIO')  ?? null,
+          video:  live.tracks?.find(t => t.type === 'VIDEO')  ?? null,
+          screen: live.tracks?.find(t => t.type === 'SCREEN') ?? null,
+        } : null,
       };
     });
 
@@ -573,12 +461,11 @@ const getCallParticipants = async (req, res, next) => {
     return res.json({
       participants,
       summary: {
-        total:       participants.length,
-        active:      active.length,
-        video:       video.length,
-        audio_only:  active.length - video.length,
-        // REQ-15: warn if video cap is approaching
-        video_cap:   25,
+        total:                participants.length,
+        active:               active.length,
+        video:                video.length,
+        audio_only:           active.length - video.length,
+        video_cap:            25,
         video_slots_remaining: Math.max(0, 25 - video.length),
       },
     });
@@ -588,38 +475,31 @@ const getCallParticipants = async (req, res, next) => {
 };
 
 // ─────────────────────────────────────────────
-// REQ-17: Mute a participant (admin / host only)
+// REQ-17: Mute a participant
 // ─────────────────────────────────────────────
-/**
- * POST /api/v1/calls/:callId/participants/:targetUserId/mute
- * Body: { track_type: 'audio' | 'video' | 'screen' }
- *
- * Uses the LiveKit server API to force-mute a participant's track.
- */
 const muteParticipant = async (req, res, next) => {
   try {
     const { callId, targetUserId } = req.params;
     const { track_type = 'audio' } = req.body;
     const userId = req.user.user_id;
 
-    // Only host or admin can mute others
-    const callResult = await query(
-      `SELECT started_by FROM public.call WHERE call_id = $1`,
-      [callId]
-    );
+    const { data: call, error: callError } = await supabase
+      .from('call')
+      .select('started_by')
+      .eq('call_id', callId)
+      .single();
 
-    if (callResult.rows.length === 0) {
+    if (callError || !call) {
       return res.status(404).json({ error: 'Call not found' });
     }
 
-    const isHost  = callResult.rows[0].started_by === userId;
+    const isHost  = call.started_by === userId;
     const isAdmin = req.user.role === 'admin';
 
     if (!isHost && !isAdmin) {
       return res.status(403).json({ error: 'Only the host or admin can mute participants' });
     }
 
-    // Get the target participant's tracks from LiveKit
     const liveParticipants = await roomService.listParticipants(callId);
     const target = liveParticipants.find(p => p.identity === targetUserId);
 
@@ -627,7 +507,6 @@ const muteParticipant = async (req, res, next) => {
       return res.status(404).json({ error: 'Participant is not active in this call' });
     }
 
-    // Find the track to mute
     const trackTypeMap = { audio: 'AUDIO', video: 'VIDEO', screen: 'SCREEN' };
     const track = target.tracks?.find(t => t.type === trackTypeMap[track_type]);
 
@@ -637,15 +516,9 @@ const muteParticipant = async (req, res, next) => {
 
     await roomService.mutePublishedTrack(callId, targetUserId, track.sid, true);
 
-    // Notify via WebSocket
     wsService.broadcastToCall(callId, {
       event: 'PARTICIPANT_MUTED',
-      data:  {
-        call_id:      callId,
-        user_id:      targetUserId,
-        track_type,
-        muted_by:     userId,
-      },
+      data:  { call_id: callId, user_id: targetUserId, track_type, muted_by: userId },
     });
 
     return res.json({ message: `${track_type} muted for participant` });
@@ -655,41 +528,32 @@ const muteParticipant = async (req, res, next) => {
 };
 
 // ─────────────────────────────────────────────
-// Get active call for a channel (REQ-16)
+// REQ-16: Get active call for a channel
 // ─────────────────────────────────────────────
-/**
- * GET /api/v1/calls/channel/:channelId/active
- *
- * Lets the frontend show the "call active" indicator in the channel header.
- * Returns null if no call is running.
- */
 const getActiveCall = async (req, res, next) => {
   try {
     const { channelId } = req.params;
 
-    const result = await query(
-      `SELECT
-         c.call_id,
-         c.started_by,
-         c.start_time,
-         c.call_type,
-         c.livekit_room,
-         u.name as started_by_name,
-         COUNT(cp.user_id) FILTER (WHERE cp.left_at IS NULL) as active_participants
-       FROM public.call c
-       JOIN public.user u ON u.user_id = c.started_by
-       LEFT JOIN public.call_participant cp ON cp.call_id = c.call_id
-       WHERE c.channel_id = $1 AND c.end_time IS NULL
-       GROUP BY c.call_id, u.name
-       LIMIT 1`,
-      [channelId]
-    );
+    const { data: call, error } = await supabase
+      .from('call')
+      .select('call_id, started_by, start_time, call_type, livekit_room, user(name), call_participant(user_id, left_at)')
+      .eq('channel_id', channelId)
+      .is('end_time', null)
+      .single();
 
-    if (result.rows.length === 0) {
+    if (error || !call) {
       return res.json({ active_call: null });
     }
 
-    return res.json({ active_call: result.rows[0] });
+    const activeParticipants = call.call_participant?.filter(p => !p.left_at).length ?? 0;
+
+    return res.json({
+      active_call: {
+        ...call,
+        started_by_name:    call.user?.name,
+        active_participants: activeParticipants,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -698,85 +562,69 @@ const getActiveCall = async (req, res, next) => {
 // ─────────────────────────────────────────────
 // Call history for a channel
 // ─────────────────────────────────────────────
-/**
- * GET /api/v1/calls/channel/:channelId/history
- *
- * Returns past calls with duration and participant counts.
- */
 const getCallHistory = async (req, res, next) => {
   try {
-    const { channelId }      = req.params;
+    const { channelId }          = req.params;
     const { limit = 20, offset = 0 } = req.query;
 
-    const result = await query(
-      `SELECT
-         c.call_id,
-         c.start_time,
-         c.end_time,
-         c.call_type,
-         u.name as started_by_name,
-         EXTRACT(EPOCH FROM (c.end_time - c.start_time))::int as duration_seconds,
-         COUNT(DISTINCT cp.user_id) as total_participants
-       FROM public.call c
-       JOIN public.user u ON u.user_id = c.started_by
-       LEFT JOIN public.call_participant cp ON cp.call_id = c.call_id
-       WHERE c.channel_id = $1 AND c.end_time IS NOT NULL
-       GROUP BY c.call_id, u.name
-       ORDER BY c.start_time DESC
-       LIMIT $2 OFFSET $3`,
-      [channelId, Number(limit), Number(offset)]
-    );
+    const { data: history, error } = await supabase
+      .from('call')
+      .select('call_id, start_time, end_time, call_type, user(name), call_participant(user_id)')
+      .eq('channel_id', channelId)
+      .not('end_time', 'is', null)
+      .order('start_time', { ascending: false })
+      .range(Number(offset), Number(offset) + Number(limit) - 1);
 
-    return res.json({ history: result.rows, count: result.rowCount });
+    if (error) throw error;
+
+    const formatted = history.map(c => ({
+      call_id:           c.call_id,
+      start_time:        c.start_time,
+      end_time:          c.end_time,
+      call_type:         c.call_type,
+      started_by_name:   c.user?.name,
+      total_participants: c.call_participant?.length ?? 0,
+      duration_seconds:  c.end_time
+        ? Math.floor((new Date(c.end_time) - new Date(c.start_time)) / 1000)
+        : null,
+    }));
+
+    return res.json({ history: formatted, count: formatted.length });
   } catch (err) {
     next(err);
   }
 };
 
 // ─────────────────────────────────────────────
-// LiveKit webhook receiver
+// LiveKit webhook
 // ─────────────────────────────────────────────
-/**
- * POST /api/v1/calls/livekit-webhook
- *
- * LiveKit pings this endpoint for room lifecycle events.
- * Keeps Supabase in sync automatically without polling.
- *
- * Events handled:
- *   room_started        → ensure call row exists
- *   room_finished       → mark call ended in Supabase
- *   participant_joined  → update left_at = NULL
- *   participant_left    → update left_at = NOW()
- *
- * Set this URL in your LiveKit Cloud dashboard → Webhooks.
- */
 const livekitWebhook = async (req, res, next) => {
   try {
     const receiver = new WebhookReceiver(LK_KEY, LK_SECRET);
-
-    // LiveKit sends raw body — make sure express.raw() is applied to this route
-    const event = receiver.receive(req.body, req.headers['x-livekit-signature']);
+    const event    = receiver.receive(req.body, req.headers['x-livekit-signature']);
 
     switch (event.event) {
 
       case 'room_finished': {
-        // Auto-close in Supabase if the room drained and LiveKit closed it
-        await query(
-          `UPDATE public.call
-           SET end_time = NOW()
-           WHERE livekit_room = $1 AND end_time IS NULL`,
-          [event.room.name]
-        );
+        await supabase
+          .from('call')
+          .update({ end_time: new Date().toISOString() })
+          .eq('livekit_room', event.room.name)
+          .is('end_time', null);
 
-        await query(
-          `UPDATE public.call_participant cp
-           SET left_at = NOW()
-           FROM public.call c
-           WHERE c.call_id = cp.call_id
-             AND c.livekit_room = $1
-             AND cp.left_at IS NULL`,
-          [event.room.name]
-        );
+        // Mark all participants left
+        const { data: calls } = await supabase
+          .from('call')
+          .select('call_id')
+          .eq('livekit_room', event.room.name);
+
+        if (calls?.length) {
+          await supabase
+            .from('call_participant')
+            .update({ left_at: new Date().toISOString() })
+            .eq('call_id', calls[0].call_id)
+            .is('left_at', null);
+        }
 
         wsService.broadcastToCall(event.room.name, {
           event: 'CALL_ENDED',
@@ -786,28 +634,34 @@ const livekitWebhook = async (req, res, next) => {
       }
 
       case 'participant_joined': {
-        await query(
-          `UPDATE public.call_participant cp
-           SET left_at = NULL, joined_at = NOW()
-           FROM public.call c
-           WHERE c.call_id = cp.call_id
-             AND c.livekit_room = $1
-             AND cp.livekit_identity = $2`,
-          [event.room.name, event.participant.identity]
-        );
+        const { data: calls } = await supabase
+          .from('call')
+          .select('call_id')
+          .eq('livekit_room', event.room.name);
+
+        if (calls?.length) {
+          await supabase
+            .from('call_participant')
+            .update({ left_at: null, joined_at: new Date().toISOString() })
+            .eq('call_id', calls[0].call_id)
+            .eq('livekit_identity', event.participant.identity);
+        }
         break;
       }
 
       case 'participant_left': {
-        await query(
-          `UPDATE public.call_participant cp
-           SET left_at = NOW()
-           FROM public.call c
-           WHERE c.call_id = cp.call_id
-             AND c.livekit_room = $1
-             AND cp.livekit_identity = $2`,
-          [event.room.name, event.participant.identity]
-        );
+        const { data: calls } = await supabase
+          .from('call')
+          .select('call_id')
+          .eq('livekit_room', event.room.name);
+
+        if (calls?.length) {
+          await supabase
+            .from('call_participant')
+            .update({ left_at: new Date().toISOString() })
+            .eq('call_id', calls[0].call_id)
+            .eq('livekit_identity', event.participant.identity);
+        }
         break;
       }
 
@@ -817,7 +671,6 @@ const livekitWebhook = async (req, res, next) => {
 
     return res.status(200).json({ received: true });
   } catch (err) {
-    // Invalid signature or malformed payload
     console.error('[LiveKit webhook]', err.message);
     return res.status(400).json({ error: 'Invalid webhook payload' });
   }
