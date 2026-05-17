@@ -11,6 +11,9 @@ const {
   getMembers,
   removeMember,
   updateMemberRole,
+  getInviteCode,
+  regenerateInviteCode,
+  joinByCode,
 } = require('../controllers/workspaceController');
 
 // All routes require authentication
@@ -28,5 +31,10 @@ router.post('/:workspaceId/members', addMember);
 router.get('/:workspaceId/members', getMembers);
 router.delete('/:workspaceId/members/:userId', removeMember);
 router.patch('/:workspaceId/members/:userId', updateMemberRole);
+
+// Invite code
+router.get('/:workspaceId/invite', getInviteCode);
+router.post('/:workspaceId/invite/regenerate', regenerateInviteCode);
+router.post('/join', joinByCode);
 
 module.exports = router;

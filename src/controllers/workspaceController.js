@@ -1,4 +1,8 @@
 const { supabase } = require('../config/supabase');
+const crypto = require('crypto');
+
+// ─── Helper: generate invite code ────────────────────────────────────────────
+const generateCode = () => crypto.randomBytes(4).toString('hex').toUpperCase();
 
 // ─── Create Workspace ────────────────────────────────────────────────────────
 const createWorkspace = async (req, res) => {
@@ -11,7 +15,7 @@ const createWorkspace = async (req, res) => {
 
   const { data: workspace, error: wsError } = await supabase
     .from('workspace')
-    .insert({ name, description, user_id, is_public })
+    .insert({ name, description, user_id, is_public, invite_code: generateCode() })
     .select()
     .single();
 
@@ -55,7 +59,7 @@ const getMyWorkspaces = async (req, res) => {
       role,
       join_at,
       workspace (
-        workspace_id, name, description, is_public, user_id, created_at
+        workspace_id, name, description, is_public, user_id, created_at, invite_code
       )
     `)
     .eq('user_id', user_id);
@@ -242,14 +246,32 @@ const getMembers = async (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this workspace' });
   }
 
+  // Join against the user table so email is always current, not the snapshot
+  // stored at join time. name stays from workspace_member (display name).
   const { data, error } = await supabase
     .from('workspace_member')
-    .select('user_id, name, email, role, status, join_at')
+    .select(`
+      user_id,
+      name,
+      role,
+      status,
+      join_at,
+      user:user_id ( email )
+    `)
     .eq('workspace_id', workspaceId);
 
   if (error) return res.status(500).json({ error: error.message });
 
-  return res.status(200).json(data);
+  const members = data.map((m) => ({
+    user_id: m.user_id,
+    name:    m.name,
+    email:   m.user?.email || null,
+    role:    m.role,
+    status:  m.status,
+    join_at: m.join_at,
+  }));
+
+  return res.status(200).json(members);
 };
 
 // ─── Remove Member ───────────────────────────────────────────────────────────
@@ -329,6 +351,134 @@ const updateMemberRole = async (req, res) => {
   return res.status(200).json(data);
 };
 
+// ─── Get Invite Code ─────────────────────────────────────────────────────────
+const getInviteCode = async (req, res) => {
+  const { workspaceId } = req.params;
+  const user_id = req.user.user_id;
+
+  const { data: member } = await supabase
+    .from('workspace_member')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user_id)
+    .single();
+
+  if (!member) {
+    return res.status(403).json({ error: 'You are not a member of this workspace' });
+  }
+
+  const { data: workspace, error } = await supabase
+    .from('workspace')
+    .select('invite_code')
+    .eq('workspace_id', workspaceId)
+    .single();
+
+  if (error || !workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+  if (!workspace.invite_code) {
+    const newCode = generateCode();
+    await supabase.from('workspace').update({ invite_code: newCode }).eq('workspace_id', workspaceId);
+    return res.status(200).json({ invite_code: newCode });
+  }
+
+  return res.status(200).json({ invite_code: workspace.invite_code });
+};
+
+// ─── Regenerate Invite Code ──────────────────────────────────────────────────
+const regenerateInviteCode = async (req, res) => {
+  const { workspaceId } = req.params;
+  const user_id = req.user.user_id;
+
+  const { data: member } = await supabase
+    .from('workspace_member')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user_id)
+    .single();
+
+  if (!member || !['owner', 'admin'].includes(member.role)) {
+    return res.status(403).json({ error: 'Only owners and admins can regenerate the invite code' });
+  }
+
+  const newCode = generateCode();
+
+  const { error } = await supabase
+    .from('workspace')
+    .update({ invite_code: newCode })
+    .eq('workspace_id', workspaceId);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const io = req.app.get('io');
+  if (io) io.to(`workspace:${workspaceId}`).emit('workspace:invite_regenerated', { workspaceId });
+
+  return res.status(200).json({ invite_code: newCode });
+};
+
+// ─── Join Workspace By Invite Code ───────────────────────────────────────────
+const joinByCode = async (req, res) => {
+  const { invite_code } = req.body;
+  const user_id = req.user.user_id;
+
+  if (!invite_code) {
+    return res.status(400).json({ error: 'invite_code is required' });
+  }
+
+  const { data: workspace, error: wsError } = await supabase
+    .from('workspace')
+    .select('workspace_id, name, is_public')
+    .eq('invite_code', invite_code.toUpperCase().trim())
+    .single();
+
+  if (wsError || !workspace) {
+    return res.status(404).json({ error: 'Invalid invite code' });
+  }
+
+  const { data: existing } = await supabase
+    .from('workspace_member')
+    .select('workspace_id')
+    .eq('workspace_id', workspace.workspace_id)
+    .eq('user_id', user_id)
+    .single();
+
+  if (existing) {
+    return res.status(409).json({ error: 'You are already a member of this workspace' });
+  }
+
+  const { data: user, error: userError } = await supabase
+    .from('user')
+    .select('name, email, status')
+    .eq('user_id', user_id)
+    .single();
+
+  if (userError || !user) return res.status(500).json({ error: 'Could not fetch user info' });
+
+  const { data: newMember, error: memberError } = await supabase
+    .from('workspace_member')
+    .insert({
+      workspace_id: workspace.workspace_id,
+      user_id,
+      name: user.name,
+      email: user.email,
+      role: 'member',
+      status: user.status || 'active',
+      join_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (memberError) return res.status(500).json({ error: memberError.message });
+
+  const io = req.app.get('io');
+  if (io) io.to(`workspace:${workspace.workspace_id}`).emit('workspace:member_added', newMember);
+
+  return res.status(201).json({
+    message: `Joined workspace "${workspace.name}" successfully`,
+    workspace_id: workspace.workspace_id,
+    workspace_name: workspace.name,
+  });
+};
+
 module.exports = {
   createWorkspace,
   getMyWorkspaces,
@@ -339,4 +489,7 @@ module.exports = {
   getMembers,
   removeMember,
   updateMemberRole,
+  getInviteCode,
+  regenerateInviteCode,
+  joinByCode,
 };
