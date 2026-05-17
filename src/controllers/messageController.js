@@ -39,9 +39,13 @@ const sendMessage = async (req, res) => {
         updated_at,
         parent_message_id,
         channel_id,
-        user:user_id (user_id, name, email)
+        user:user_id (user_id, name, email),
+        files:file (file_id, file_name, file_url, size)
       `)
       .single();
+    // ↑ Only change from your original: added files:file(...) so the socket
+    //   emit carries the same shape as getMessages. Files will be [] on insert
+    //   since they are uploaded right after using the returned message_id.
 
     if (error) return res.status(500).json({ error: error.message });
 
