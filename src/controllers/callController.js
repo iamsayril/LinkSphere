@@ -44,7 +44,7 @@ function broadcastToCall(app, callId, payload) {
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
-function generateToken(roomName, userId, userName, overrides = {}) {
+async function generateToken(roomName, userId, userName, overrides = {}) {
   const at = new AccessToken(LK_KEY, LK_SECRET, {
     identity: userId,
     name:     userName,
@@ -62,8 +62,21 @@ function generateToken(roomName, userId, userName, overrides = {}) {
     ...overrides,
   });
 
-  return at.toJwt();
+  return await at.toJwt();
 }
+
+  at.addGrant({
+    roomJoin:          true,
+    room:              roomName,
+    canPublish:        true,
+    canPublishSources: ['camera', 'microphone'],
+    canSubscribe:      true,
+    canPublishData:    true,
+    roomAdmin:         overrides.roomAdmin ?? false,
+    ...overrides,
+  });
+
+  return at.toJwt();
 
 async function safeDeleteRoom(roomName) {
   try {
@@ -193,18 +206,22 @@ const startCall = async (req, res, next) => {
       data:  { call_id: call.call_id, started_by: userId, call_type, channel_id },
     });
 
-    await notificationService.notifyChannelMembers({
-      channelId:     channel_id,
-      title:         'Call Started',
-      message:       `${userName} started a ${call_type} call`,
-      excludeUserId: userId,
-    });
+    try {
+      await notificationService.notifyChannelMembers({
+        channelId:     channel_id,
+        title:         'Call Started',
+        message:       `${userName} started a ${call_type} call`,
+        excludeUserId: userId,
+      });
+    } catch (notifyErr) {
+      console.warn('[startCall] Notification failed (non-fatal):', notifyErr.message);
+    }
 
     return res.status(201).json({
       call: { ...call, livekit_room: roomName },
       livekit: {
         url:   LK_URL,
-        token: generateToken(roomName, userId, userName),
+        token: await generateToken(roomName, userId, userName),
       },
     });
   } catch (err) {
@@ -235,9 +252,11 @@ const joinCall = async (req, res, next) => {
     }
 
     // Verify workspace membership
+    // Verify workspace membership
     const { data: member } = await supabase
       .from('workspace_member')
       .select('user_id')
+      .eq('workspace_id', call.channel.workspace_id)
       .eq('user_id', userId)
       .single();
 
@@ -295,9 +314,9 @@ const joinCall = async (req, res, next) => {
       audio_only:        !videoEnabled,
       livekit: {
         url:   LK_URL,
-        token: generateToken(call.livekit_room ?? callId, userId, userName, {
+        token: await generateToken(call.livekit_room ?? callId, userId, userName, {
           canPublishSources: videoEnabled
-            ? ['camera', 'microphone', 'screen_share', 'screen_share_audio']
+            ? ['camera', 'microphone']
             : ['microphone'],
         }),
       },
@@ -407,14 +426,19 @@ const endCall = async (req, res, next) => {
 
     await safeDeleteRoom(call.livekit_room ?? callId);
 
-    await createAuditLog({
-      action_type:  'CALL_ENDED',
-      type:         'call',
-      status:       'success',
-      workspace_id: call.channel?.workspace_id,
-      channel_id:   call.channel_id,
-      user_id:      userId,
-    });
+    // Audit log
+    try {
+      await createAuditLog({
+        action_type:  'CALL_STARTED',
+        type:         'call',
+        status:       'success',
+        workspace_id: access.workspace_id,
+        channel_id,
+        user_id:      userId,
+      });
+    } catch (auditErr) {
+      console.warn('[startCall] Audit log failed (non-fatal):', auditErr.message);
+    }
 
     // FIX: was wsService.broadcastToCall(...)
     broadcastToCall(req.app, callId, {
