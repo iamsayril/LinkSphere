@@ -6,7 +6,7 @@
  */
 
 const { AccessToken, RoomServiceClient, WebhookReceiver } = require('livekit-server-sdk');
-const { supabase }            = require('../config/supabase');
+const { supabaseAdmin }            = require('../config/supabaseAdmin');
 const notificationService     = require('../services/notificationService');
 const { createAuditLog }      = require('../services/auditService');
 
@@ -87,7 +87,7 @@ const startCall = async (req, res, next) => {
     }
 
     // Verify the user is a workspace member for this channel
-    const { data: channel, error: channelError } = await supabase
+    const { data: channel, error: channelError } = await supabaseAdmin
       .from('channel')
       .select('channel_id, workspace_id')
       .eq('channel_id', channel_id)
@@ -97,7 +97,7 @@ const startCall = async (req, res, next) => {
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    const { data: member, error: memberError } = await supabase
+    const { data: member, error: memberError } = await supabaseAdmin  
       .from('workspace_member')
       .select('user_id')
       .eq('workspace_id', channel.workspace_id)
@@ -111,7 +111,7 @@ const startCall = async (req, res, next) => {
     const access = channel;
 
     // Check no active call is already running in this channel
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing, error: existingError } = await supabaseAdmin
   .from('call')
   .select('call_id')
   .eq('channel_id', channel_id)
@@ -127,7 +127,7 @@ const startCall = async (req, res, next) => {
     }
 
     // Create call row
-    const { data: call, error: callError } = await supabase
+    const { data: call, error: callError } = await supabaseAdmin
       .from('call')
       .insert({
         started_by:       userId,
@@ -158,7 +158,7 @@ const startCall = async (req, res, next) => {
     });
 
     // Store room name on call row
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('call')
       .update({ livekit_room: roomName })
       .eq('call_id', call.call_id);
@@ -166,7 +166,7 @@ const startCall = async (req, res, next) => {
     if (updateError) throw updateError;
 
     // Add caller as first participant
-    const { error: participantError } = await supabase
+    const { error: participantError } = await supabaseAdmin
   .from('call_participant')
   .insert({
     call_id:          call.call_id,
@@ -233,7 +233,7 @@ const joinCall = async (req, res, next) => {
     const userName               = req.user.name;
 
     // Verify call exists and is active
-    const { data: call, error: callError } = await supabase
+    const { data: call, error: callError } = await supabaseAdmin
       .from('call')
       .select('*, channel(workspace_id)')
       .eq('call_id', callId)
@@ -246,7 +246,7 @@ const joinCall = async (req, res, next) => {
 
     // Verify workspace membership
     // Verify workspace membership
-    const { data: member } = await supabase
+    const { data: member } = await supabaseAdmin
       .from('workspace_member')
       .select('user_id')
       .eq('workspace_id', call.channel.workspace_id)
@@ -260,7 +260,7 @@ const joinCall = async (req, res, next) => {
     // REQ-15: enforce video cap
     let videoEnabled = !audio_only;
     if (videoEnabled) {
-      const { count } = await supabase
+      const { count } = await supabaseAdmin
         .from('call_participant')
         .select('*', { count: 'exact', head: true })
         .eq('call_id', callId)
@@ -274,7 +274,7 @@ const joinCall = async (req, res, next) => {
     }
 
     // Upsert participant row
-    const { error: upsertError } = await supabase
+    const { error: upsertError } = await supabaseAdmin
       .from('call_participant')
       .upsert({
         call_id:          callId,
@@ -289,7 +289,7 @@ const joinCall = async (req, res, next) => {
     if (upsertError) throw upsertError;
 
     // Current participant count
-    const { count: participantCount } = await supabase
+    const { count: participantCount } = await supabaseAdmin
       .from('call_participant')
       .select('*', { count: 'exact', head: true })
       .eq('call_id', callId)
@@ -328,7 +328,7 @@ const leaveCall = async (req, res, next) => {
     const userId     = req.user.user_id;
 
     // Mark participant as left
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('call_participant')
       .update({ left_at: new Date().toISOString() })
       .eq('call_id', callId)
@@ -337,7 +337,7 @@ const leaveCall = async (req, res, next) => {
     if (error) throw error;
 
     // Count remaining participants
-    const { count: remainingCount } = await supabase
+    const { count: remainingCount } = await supabaseAdmin
       .from('call_participant')
       .select('*', { count: 'exact', head: true })
       .eq('call_id', callId)
@@ -345,7 +345,7 @@ const leaveCall = async (req, res, next) => {
 
     if (remainingCount === 0) {
       // Last person — auto-end
-      await supabase
+      await supabaseAdmin
         .from('call')
         .update({ end_time: new Date().toISOString() })
         .eq('call_id', callId);
@@ -385,7 +385,7 @@ const endCall = async (req, res, next) => {
     const { callId } = req.params;
     const userId     = req.user.user_id;
 
-    const { data: call, error: callError } = await supabase
+    const { data: call, error: callError } = await supabaseAdmin
       .from('call')
       .select('*, channel(workspace_id)')
       .eq('call_id', callId)
@@ -405,13 +405,13 @@ const endCall = async (req, res, next) => {
     }
 
     // Close call
-    await supabase
+    await supabaseAdmin
       .from('call')
       .update({ end_time: new Date().toISOString() })
       .eq('call_id', callId);
 
     // Mark all participants as left
-    await supabase
+    await supabaseAdmin
       .from('call_participant')
       .update({ left_at: new Date().toISOString() })
       .eq('call_id', callId)
@@ -460,7 +460,7 @@ const getCallParticipants = async (req, res, next) => {
   try {
     const { callId } = req.params;
 
-    const { data: dbParticipants, error } = await supabase
+    const { data: dbParticipants, error } = await supabaseAdmin
       .from('call_participant')
       .select('callparticipant_id, user_id, joined_at, left_at, audio_enabled, video_enabled, livekit_identity, user(name, email)')
       .eq('call_id', callId)
@@ -522,7 +522,7 @@ const muteParticipant = async (req, res, next) => {
     const { track_type = 'audio' } = req.body;
     const userId = req.user.user_id;
 
-    const { data: call, error: callError } = await supabase
+    const { data: call, error: callError } = await supabaseAdmin
       .from('call')
       .select('started_by')
       .eq('call_id', callId)
@@ -574,7 +574,7 @@ const getActiveCall = async (req, res, next) => {
   try {
     const { channelId } = req.params;
 
-    const { data: call, error } = await supabase
+    const { data: call, error } = await supabaseAdmin
       .from('call')
       .select('call_id, started_by, start_time, call_type, livekit_room, user(name), call_participant(user_id, left_at)')
       .eq('channel_id', channelId)
@@ -607,7 +607,7 @@ const getCallHistory = async (req, res, next) => {
     const { channelId }              = req.params;
     const { limit = 20, offset = 0 } = req.query;
 
-    const { data: history, error } = await supabase
+    const { data: history, error } = await supabaseAdmin
       .from('call')
       .select('call_id, start_time, end_time, call_type, user(name), call_participant(user_id)')
       .eq('channel_id', channelId)
@@ -646,19 +646,19 @@ const livekitWebhook = async (req, res, next) => {
     switch (event.event) {
 
       case 'room_finished': {
-        await supabase
+        await supabaseAdmin
           .from('call')
           .update({ end_time: new Date().toISOString() })
           .eq('livekit_room', event.room.name)
           .is('end_time', null);
 
-        const { data: calls } = await supabase
+        const { data: calls } = await supabaseAdmin
           .from('call')
           .select('call_id')
           .eq('livekit_room', event.room.name);
 
         if (calls?.length) {
-          await supabase
+          await supabaseAdmin
             .from('call_participant')
             .update({ left_at: new Date().toISOString() })
             .eq('call_id', calls[0].call_id)
@@ -674,13 +674,13 @@ const livekitWebhook = async (req, res, next) => {
       }
 
       case 'participant_joined': {
-        const { data: calls } = await supabase
+        const { data: calls } = await supabaseAdmin
           .from('call')
           .select('call_id')
           .eq('livekit_room', event.room.name);
 
         if (calls?.length) {
-          await supabase
+          await supabaseAdmin
             .from('call_participant')
             .update({ left_at: null, joined_at: new Date().toISOString() })
             .eq('call_id', calls[0].call_id)
@@ -690,13 +690,13 @@ const livekitWebhook = async (req, res, next) => {
       }
 
       case 'participant_left': {
-        const { data: calls } = await supabase
+        const { data: calls } = await supabaseAdmin
           .from('call')
           .select('call_id')
           .eq('livekit_room', event.room.name);
 
         if (calls?.length) {
-          await supabase
+          await supabaseAdmin
             .from('call_participant')
             .update({ left_at: new Date().toISOString() })
             .eq('call_id', calls[0].call_id)
@@ -731,7 +731,7 @@ const startDmCall = async (req, res, next) => {
       return res.status(400).json({ error: 'receiver_id and room_name are required' });
     }
 
-    const { data: dmCall, error } = await supabase
+    const { data: dmCall, error } = await supabaseAdmin
       .from('dm_call')
       .insert({
         caller_id,
@@ -758,7 +758,7 @@ const endDmCall = async (req, res, next) => {
     const { dmCallId } = req.params;
     const userId = req.user.user_id;
 
-    const { data: dmCall, error: fetchError } = await supabase
+    const { data: dmCall, error: fetchError } = await supabaseAdmin
       .from('dm_call')
       .select('*')
       .eq('dm_call_id', dmCallId)
@@ -772,7 +772,7 @@ const endDmCall = async (req, res, next) => {
       return res.status(403).json({ error: 'Not authorized to end this call' });
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('dm_call')
       .update({ end_time: new Date().toISOString() })
       .eq('dm_call_id', dmCallId);
