@@ -55,7 +55,7 @@ async function generateToken(roomName, userId, userName, overrides = {}) {
     roomJoin:          true,
     room:              roomName,
     canPublish:        true,
-    canPublishSources: ['camera', 'microphone', 'screen_share', 'screen_share_audio'],
+    canPublishSources: ['camera', 'microphone'],
     canSubscribe:      true,
     canPublishData:    true,
     roomAdmin:         overrides.roomAdmin ?? false,
