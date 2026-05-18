@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 const crypto = require('crypto');
 
 // ─── Helper: generate invite code ────────────────────────────────────────────
@@ -13,7 +13,7 @@ const createWorkspace = async (req, res) => {
     return res.status(400).json({ error: 'Workspace name is required' });
   }
 
-  const { data: workspace, error: wsError } = await supabase
+  const { data: workspace, error: wsError } = await supabaseAdmin
     .from('workspace')
     .insert({ name, description, user_id, is_public, invite_code: generateCode() })
     .select()
@@ -21,7 +21,7 @@ const createWorkspace = async (req, res) => {
 
   if (wsError) return res.status(500).json({ error: wsError.message });
 
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await supabaseAdmin
     .from('user')
     .select('name, email, status')
     .eq('user_id', user_id)
@@ -29,7 +29,7 @@ const createWorkspace = async (req, res) => {
 
   if (userError || !user) return res.status(500).json({ error: 'Could not fetch user info' });
 
-  const { error: memberError } = await supabase
+  const { error: memberError } = await supabaseAdmin
     .from('workspace_member')
     .insert({
       workspace_id: workspace.workspace_id,
@@ -53,7 +53,7 @@ const createWorkspace = async (req, res) => {
 const getMyWorkspaces = async (req, res) => {
   const user_id = req.user.user_id;
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('workspace_member')
     .select(`
       role,
@@ -80,7 +80,7 @@ const getWorkspaceById = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;
 
-  const { data: member } = await supabase
+  const { data: member } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -91,7 +91,7 @@ const getWorkspaceById = async (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this workspace' });
   }
 
-  const { data: workspace, error } = await supabase
+  const { data: workspace, error } = await supabaseAdmin
     .from('workspace')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -108,7 +108,7 @@ const updateWorkspace = async (req, res) => {
   const user_id = req.user.user_id;
   const { name, description, is_public } = req.body;
 
-  const { data: member } = await supabase
+  const { data: member } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -124,7 +124,7 @@ const updateWorkspace = async (req, res) => {
   if (description !== undefined) updates.description = description;
   if (is_public !== undefined) updates.is_public = is_public;
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('workspace')
     .update(updates)
     .eq('workspace_id', workspaceId)
@@ -144,7 +144,7 @@ const deleteWorkspace = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;
 
-  const { data: workspace } = await supabase
+  const { data: workspace } = await supabaseAdmin
     .from('workspace')
     .select('user_id')
     .eq('workspace_id', workspaceId)
@@ -155,7 +155,7 @@ const deleteWorkspace = async (req, res) => {
     return res.status(403).json({ error: 'Only the workspace owner can delete it' });
   }
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('workspace')
     .delete()
     .eq('workspace_id', workspaceId);
@@ -181,7 +181,7 @@ const uploadWorkspaceIcon = async (req, res) => {
     return res.status(400).json({ error: 'Only JPG, PNG, GIF, WEBP allowed' });
   }
 
-  const { data: member } = await supabase
+  const { data: member } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -195,7 +195,7 @@ const uploadWorkspaceIcon = async (req, res) => {
   const ext = file.originalname.split('.').pop();
   const fileName = `workspace-icons/${workspaceId}/icon_${Date.now()}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabaseAdmin.storage
     .from('linksphere-files')
     .upload(fileName, file.buffer, {
       contentType: file.mimetype,
@@ -204,11 +204,11 @@ const uploadWorkspaceIcon = async (req, res) => {
 
   if (uploadError) return res.status(500).json({ error: uploadError.message });
 
-  const { data: urlData } = supabase.storage
+  const { data: urlData } = supabaseAdmin.storage
     .from('linksphere-files')
     .getPublicUrl(fileName);
 
-  const { data: workspace, error } = await supabase
+  const { data: workspace, error } = await supabaseAdmin
     .from('workspace')
     .update({ icon_url: urlData.publicUrl })
     .eq('workspace_id', workspaceId)
@@ -233,7 +233,7 @@ const addMember = async (req, res) => {
     return res.status(400).json({ error: 'user_id is required' });
   }
 
-  const { data: requester } = await supabase
+  const { data: requester } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -244,7 +244,7 @@ const addMember = async (req, res) => {
     return res.status(403).json({ error: 'Only owners and admins can add members' });
   }
 
-  const { data: existing } = await supabase
+  const { data: existing } = await supabaseAdmin
     .from('workspace_member')
     .select('workspace_id')
     .eq('workspace_id', workspaceId)
@@ -254,8 +254,8 @@ const addMember = async (req, res) => {
   if (existing) {
     return res.status(409).json({ error: 'User is already a member of this workspace' });
   }
-
-  const { data: user, error: userError } = await supabase
+A
+  const { data: user, error: userError } = await supabaseAdmin
     .from('user')
     .select('name, email, status')
     .eq('user_id', target_user_id)
@@ -263,7 +263,7 @@ const addMember = async (req, res) => {
 
   if (userError || !user) return res.status(404).json({ error: 'User not found' });
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('workspace_member')
     .insert({
       workspace_id: workspaceId,
@@ -290,7 +290,7 @@ const getMembers = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;
 
-  const { data: self } = await supabase
+  const { data: self } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -301,7 +301,7 @@ const getMembers = async (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this workspace' });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('workspace_member')
     .select(`
       user_id,
@@ -334,7 +334,7 @@ const removeMember = async (req, res) => {
   const requester_id = req.user.user_id;
 
   if (requester_id !== userId) {
-    const { data: requester } = await supabase
+    const { data: requester } = await supabaseAdmin
       .from('workspace_member')
       .select('role')
       .eq('workspace_id', workspaceId)
@@ -346,7 +346,7 @@ const removeMember = async (req, res) => {
     }
   }
 
-  const { data: workspace } = await supabase
+  const { data: workspace } = await supabaseAdmin
     .from('workspace')
     .select('user_id')
     .eq('workspace_id', workspaceId)
@@ -356,7 +356,7 @@ const removeMember = async (req, res) => {
     return res.status(400).json({ error: 'Cannot remove the workspace owner' });
   }
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('workspace_member')
     .delete()
     .eq('workspace_id', workspaceId)
@@ -381,7 +381,7 @@ const updateMemberRole = async (req, res) => {
     return res.status(400).json({ error: `Role must be one of: ${validRoles.join(', ')}` });
   }
 
-  const { data: workspace } = await supabase
+  const { data: workspace } = await supabaseAdmin
     .from('workspace')
     .select('user_id')
     .eq('workspace_id', workspaceId)
@@ -392,7 +392,7 @@ const updateMemberRole = async (req, res) => {
     return res.status(403).json({ error: 'Only the workspace owner can change roles' });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('workspace_member')
     .update({ role })
     .eq('workspace_id', workspaceId)
@@ -410,7 +410,7 @@ const getInviteCode = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;
 
-  const { data: member } = await supabase
+  const { data: member } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -421,7 +421,7 @@ const getInviteCode = async (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this workspace' });
   }
 
-  const { data: workspace, error } = await supabase
+  const { data: workspace, error } = await supabaseAdmin
     .from('workspace')
     .select('invite_code')
     .eq('workspace_id', workspaceId)
@@ -431,7 +431,7 @@ const getInviteCode = async (req, res) => {
 
   if (!workspace.invite_code) {
     const newCode = generateCode();
-    await supabase.from('workspace').update({ invite_code: newCode }).eq('workspace_id', workspaceId);
+    await supabaseAdmin.from('workspace').update({ invite_code: newCode }).eq('workspace_id', workspaceId);
     return res.status(200).json({ invite_code: newCode });
   }
 
@@ -443,7 +443,7 @@ const regenerateInviteCode = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;
 
-  const { data: member } = await supabase
+  const { data: member } = await supabaseAdmin
     .from('workspace_member')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -456,7 +456,7 @@ const regenerateInviteCode = async (req, res) => {
 
   const newCode = generateCode();
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('workspace')
     .update({ invite_code: newCode })
     .eq('workspace_id', workspaceId);
@@ -478,7 +478,7 @@ const joinByCode = async (req, res) => {
     return res.status(400).json({ error: 'invite_code is required' });
   }
 
-  const { data: workspace, error: wsError } = await supabase
+  const { data: workspace, error: wsError } = await supabaseAdmin
     .from('workspace')
     .select('workspace_id, name, is_public')
     .eq('invite_code', invite_code.toUpperCase().trim())
@@ -488,7 +488,7 @@ const joinByCode = async (req, res) => {
     return res.status(404).json({ error: 'Invalid invite code' });
   }
 
-  const { data: existing } = await supabase
+  const { data: existing } = await supabaseAdmin
     .from('workspace_member')
     .select('workspace_id')
     .eq('workspace_id', workspace.workspace_id)
@@ -499,7 +499,7 @@ const joinByCode = async (req, res) => {
     return res.status(409).json({ error: 'You are already a member of this workspace' });
   }
 
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await supabaseAdmin
     .from('user')
     .select('name, email, status')
     .eq('user_id', user_id)

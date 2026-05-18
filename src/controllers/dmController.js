@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 const multer = require('multer');
 const https  = require('https');
 const http   = require('http');
@@ -16,7 +16,7 @@ const getConversations = async (req, res) => {
   try {
     const user_id = req.user.user_id;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('direct_message')
       .select('dm_id, content, created_at, sender_id, receiver_id, read, file_url, file_name')
       .or(`sender_id.eq.${user_id},receiver_id.eq.${user_id}`)
@@ -45,7 +45,7 @@ const getConversations = async (req, res) => {
 
     if (!partnerIds.length) return res.json([]);
 
-    const { data: users, error: userError } = await supabase
+    const { data: users, error: userError } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, avatar_url, status')
       .in('user_id', partnerIds);
@@ -73,7 +73,7 @@ const getDmMessages = async (req, res) => {
     const other_id = req.params.userId;
     const { limit = 50 } = req.query;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('direct_message')
       .select('dm_id, content, created_at, sender_id, receiver_id, read, file_url, file_name, file_type, file_size')
       .or(
@@ -85,7 +85,7 @@ const getDmMessages = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // Mark received messages as read
-    await supabase
+    await supabaseAdmin
       .from('direct_message')
       .update({ read: true })
       .eq('receiver_id', user_id)
@@ -113,7 +113,7 @@ const sendDm = async (req, res) => {
       return res.status(400).json({ error: 'Cannot send a DM to yourself' });
     }
 
-    const { data: receiver } = await supabase
+    const { data: receiver } = await supabaseAdmin
       .from('user')
       .select('user_id')
       .eq('user_id', receiver_id)
@@ -121,7 +121,7 @@ const sendDm = async (req, res) => {
 
     if (!receiver) return res.status(404).json({ error: 'User not found' });
 
-    const { data: dm, error } = await supabase
+    const { data: dm, error } = await supabaseAdmin
       .from('direct_message')
       .insert({
         sender_id,
@@ -169,7 +169,7 @@ const uploadDmFile = [
         return res.status(400).json({ error: 'No file provided' });
       }
 
-      const { data: receiver } = await supabase
+      const { data: receiver } = await supabaseAdmin
         .from('user')
         .select('user_id')
         .eq('user_id', receiver_id)
@@ -181,7 +181,7 @@ const uploadDmFile = [
       const ext       = req.file.originalname.split('.').pop();
       const fileName  = `dm/${sender_id}/${Date.now()}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabaseAdmin.storage
         .from('linksphere-files')
         .upload(fileName, req.file.buffer, {
           contentType: req.file.mimetype,
@@ -193,14 +193,14 @@ const uploadDmFile = [
       }
 
       // ── Get public URL ────────────────────────────────────────────────────
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = supabaseAdmin.storage
         .from('linksphere-files')
         .getPublicUrl(fileName);
 
       const file_url = urlData.publicUrl;
 
       // ── Save message to DB ────────────────────────────────────────────────
-      const { data: dm, error: dbError } = await supabase
+      const { data: dm, error: dbError } = await supabaseAdmin
         .from('direct_message')
         .insert({
           sender_id,

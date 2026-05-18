@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 
 // POST /api/files/upload
 const uploadFile = async (req, res) => {
@@ -17,7 +17,7 @@ const uploadFile = async (req, res) => {
 
     // Upload to Supabase Storage
     const fileName = `${user_id}/${Date.now()}_${file.originalname}`;
-    const { data: upload, error: uploadError } = await supabase.storage
+    const { data: upload, error: uploadError } = await supabaseAdmin.storage
       .from('linksphere-files')
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
@@ -27,12 +27,12 @@ const uploadFile = async (req, res) => {
     if (uploadError) return res.status(500).json({ error: uploadError.message });
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = supabaseAdmin.storage
       .from('linksphere-files')
       .getPublicUrl(fileName);
 
     // Save file record to database
-   const { data: fileRecord, error: dbError } = await supabase
+   const { data: fileRecord, error: dbError } = await supabaseAdmin
     .from('file')
     .insert({
       file_name: file.originalname,
@@ -59,7 +59,7 @@ const getFilesByMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
 
-    const { data: files, error } = await supabase
+    const { data: files, error } = await supabaseAdmin
       .from('file')
       .select('*')
       .eq('message_id', messageId);
@@ -78,7 +78,7 @@ const getMyFiles = async (req, res) => {
     const user_id = req.user.user_id;
     const { limit = 20 } = req.query;
 
-    const { data: files, error } = await supabase
+    const { data: files, error } = await supabaseAdmin
       .from('file')
       .select('*')
       .eq('user_id', user_id)
@@ -100,7 +100,7 @@ const deleteFile = async (req, res) => {
     const user_id = req.user.user_id;
 
     // Get file record
-    const { data: file } = await supabase
+    const { data: file } = await supabaseAdmin
       .from('file')
       .select('*')
       .eq('file_id', fileId)
@@ -114,12 +114,12 @@ const deleteFile = async (req, res) => {
     const storagePath = urlParts[1];
 
     // Delete from Supabase Storage
-    await supabase.storage
+    await supabaseAdmin.storage
       .from('linksphere-files')
       .remove([storagePath]);
 
     // Delete from database
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('file')
       .delete()
       .eq('file_id', fileId)

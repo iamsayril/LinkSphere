@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const supabaseAdmin = require('../config/supabase');
 
 // GET /api/notifications
 const getNotifications = async (req, res) => {
@@ -6,7 +6,7 @@ const getNotifications = async (req, res) => {
     const user_id = req.user.user_id;
     const { limit = 20, unread_only } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('notification')
       .select('*')
       .eq('user_id', user_id)
@@ -33,7 +33,7 @@ const markAsRead = async (req, res) => {
     const { notificationId } = req.params;
     const user_id = req.user.user_id;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notification')
       .update({ read_at: new Date().toISOString(), status: 'read' })
       .eq('notification_id', notificationId)
@@ -55,7 +55,7 @@ const markAllAsRead = async (req, res) => {
   try {
     const user_id = req.user.user_id;
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('notification')
       .update({ read_at: new Date().toISOString(), status: 'read' })
       .eq('user_id', user_id)
@@ -75,7 +75,7 @@ const deleteNotification = async (req, res) => {
     const { notificationId } = req.params;
     const user_id = req.user.user_id;
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('notification')
       .delete()
       .eq('notification_id', notificationId)
@@ -94,7 +94,7 @@ const deleteAllNotifications = async (req, res) => {
   try {
     const user_id = req.user.user_id;
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('notification')
       .delete()
       .eq('user_id', user_id);
@@ -116,7 +116,7 @@ const createNotification = async (req, res) => {
       return res.status(400).json({ error: 'user_id and title are required' });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notification')
       .insert({
         user_id,
@@ -148,7 +148,7 @@ const getUnreadCount = async (req, res) => {
   try {
     const user_id = req.user.user_id;
 
-    const { count, error } = await supabase
+    const { count, error } = await supabaseAdmin
       .from('notification')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user_id)

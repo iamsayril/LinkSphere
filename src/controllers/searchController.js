@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const supabaseAdmin = require('../config/supabase');
 
 // GET /api/search?query=xxx&type=messages|channels|users&workspace_id=xxx
 const search = async (req, res) => {
@@ -12,7 +12,7 @@ const search = async (req, res) => {
 
     // Search messages
     if (!type || type === 'messages') {
-      const { data: messages, error } = await supabase
+      const { data: messages, error } = await supabaseAdmin
         .from('message')
         .select(`
           message_id,
@@ -30,7 +30,7 @@ const search = async (req, res) => {
 
     // Search channels
     if (!type || type === 'channels') {
-      let channelQuery = supabase
+      let channelQuery = supabaseAdmin
         .from('channel')
         .select(`
           channel_id,
@@ -53,7 +53,7 @@ const search = async (req, res) => {
 
     // Search users
     if (!type || type === 'users') {
-      const { data: users, error } = await supabase
+      const { data: users, error } = await supabaseAdmin
         .from('user')
         .select('user_id, name, email, status')
         .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
@@ -64,7 +64,7 @@ const search = async (req, res) => {
 
     // Search workspaces
     if (!type || type === 'workspaces') {
-      const { data: workspaces, error } = await supabase
+      const { data: workspaces, error } = await supabaseAdmin
         .from('workspace')
         .select(`
           workspace_id,
@@ -100,7 +100,7 @@ const searchMessages = async (req, res) => {
 
     // Verify channel membership if channel_id provided
     if (channel_id) {
-      const { data: member } = await supabase
+      const { data: member } = await supabaseAdmin
         .from('channel_member')
         .select('channel_member_id')
         .eq('channel_id', channel_id)
@@ -110,7 +110,7 @@ const searchMessages = async (req, res) => {
       if (!member) return res.status(403).json({ error: 'You are not a member of this channel' });
     }
 
-    let searchQuery = supabase
+    let searchQuery = supabaseAdmin
       .from('message')
       .select(`
         message_id,
@@ -154,7 +154,7 @@ const searchUsers = async (req, res) => {
 
     if (workspace_id) {
       // Search within workspace members
-      const { data: users, error } = await supabase
+      const { data: users, error } = await supabaseAdmin
         .from('workspace_member')
         .select('user_id, name, email, role, status')
         .eq('workspace_id', workspace_id)
@@ -166,7 +166,7 @@ const searchUsers = async (req, res) => {
     }
 
     // Global user search
-    const { data: users, error } = await supabase
+    const { data: users, error } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status')
       .or(`name.ilike.%${query}%,email.ilike.%${query}%`)

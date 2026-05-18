@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 
 // POST /api/channels
 const createChannel = async (req, res) => {
@@ -11,7 +11,7 @@ const createChannel = async (req, res) => {
     }
 
     // Verify user is a workspace member
-    const { data: wsMember } = await supabase
+    const { data: wsMember } = await supabaseAdmin
       .from('workspace_member')
       .select('role')
       .eq('workspace_id', workspace_id)
@@ -23,7 +23,7 @@ const createChannel = async (req, res) => {
     }
 
     // Create channel
-    const { data: channel, error } = await supabase
+    const { data: channel, error } = await supabaseAdmin
       .from('channel')
       .insert({ name, workspace_id, created_at: new Date().toISOString() })
       .select()
@@ -32,13 +32,13 @@ const createChannel = async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // ✅ Add ALL current workspace members to the new channel
-    const { data: wsMembers, error: membersError } = await supabase
+    const { data: wsMembers, error: membersError } = await supabaseAdmin
       .from('workspace_member')
       .select('user_id')
       .eq('workspace_id', workspace_id);
 
     if (membersError) {
-      await supabase.from('channel').delete().eq('channel_id', channel.channel_id);
+      await supabaseAdmin.from('channel').delete().eq('channel_id', channel.channel_id);
       return res.status(500).json({ error: 'Failed to fetch workspace members' });
     }
 
@@ -49,12 +49,12 @@ const createChannel = async (req, res) => {
       joined_at:  new Date().toISOString(),
     }));
 
-    const { error: memberError } = await supabase
+    const { error: memberError } = await supabaseAdmin
       .from('channel_member')
       .insert(channelMembers);
 
     if (memberError) {
-      await supabase.from('channel').delete().eq('channel_id', channel.channel_id);
+      await supabaseAdmin.from('channel').delete().eq('channel_id', channel.channel_id);
       return res.status(500).json({ error: 'Failed to add members: ' + memberError.message });
     }
 
@@ -75,7 +75,7 @@ const getChannels = async (req, res) => {
     }
 
     // ✅ Verify user is a workspace member (not channel member)
-    const { data: wsMember } = await supabase
+    const { data: wsMember } = await supabaseAdmin
       .from('workspace_member')
       .select('role')
       .eq('workspace_id', workspace_id)
@@ -87,7 +87,7 @@ const getChannels = async (req, res) => {
     }
 
     // ✅ Return ALL channels in the workspace — no channel_member filter
-    const { data: channels, error } = await supabase
+    const { data: channels, error } = await supabaseAdmin
       .from('channel')
       .select('channel_id, name, created_at, workspace_id')
       .eq('workspace_id', workspace_id)
@@ -108,7 +108,7 @@ const getChannel = async (req, res) => {
     const user_id = req.user.user_id;
 
     // ✅ Check workspace membership instead of channel membership
-    const { data: channel, error: chError } = await supabase
+    const { data: channel, error: chError } = await supabaseAdmin
       .from('channel')
       .select('channel_id, name, created_at, workspace_id')
       .eq('channel_id', channelId)
@@ -116,7 +116,7 @@ const getChannel = async (req, res) => {
 
     if (chError || !channel) return res.status(404).json({ error: 'Channel not found' });
 
-    const { data: wsMember } = await supabase
+    const { data: wsMember } = await supabaseAdmin
       .from('workspace_member')
       .select('role')
       .eq('workspace_id', channel.workspace_id)
@@ -137,7 +137,7 @@ const joinChannel = async (req, res) => {
     const { channelId } = req.params;
     const user_id = req.user.user_id;
 
-    const { data: existing } = await supabase
+    const { data: existing } = await supabaseAdmin
       .from('channel_member')
       .select('channel_member_id')
       .eq('channel_id', channelId)
@@ -148,7 +148,7 @@ const joinChannel = async (req, res) => {
       return res.status(409).json({ error: 'You are already a member of this channel' });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('channel_member')
       .insert({ channel_id: channelId, user_id, role: 'member', joined_at: new Date().toISOString() })
       .select()
@@ -171,7 +171,7 @@ const leaveChannel = async (req, res) => {
     const { channelId } = req.params;
     const user_id = req.user.user_id;
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('channel_member')
       .delete()
       .eq('channel_id', channelId)
@@ -197,7 +197,7 @@ const updateChannel = async (req, res) => {
 
     if (!name) return res.status(400).json({ error: 'name is required' });
 
-    const { data: member } = await supabase
+    const { data: member } = await supabaseAdmin
       .from('channel_member')
       .select('role')
       .eq('channel_id', channelId)
@@ -208,7 +208,7 @@ const updateChannel = async (req, res) => {
       return res.status(403).json({ error: 'Only channel admins can update the channel' });
     }
 
-    const { data: channel, error } = await supabase
+    const { data: channel, error } = await supabaseAdmin
       .from('channel')
       .update({ name })
       .eq('channel_id', channelId)
@@ -229,7 +229,7 @@ const deleteChannel = async (req, res) => {
     const { channelId } = req.params;
     const user_id = req.user.user_id;
 
-    const { data: member } = await supabase
+    const { data: member } = await supabaseAdmin
       .from('channel_member')
       .select('role')
       .eq('channel_id', channelId)
@@ -240,7 +240,7 @@ const deleteChannel = async (req, res) => {
       return res.status(403).json({ error: 'Only channel admins can delete the channel' });
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('channel')
       .delete()
       .eq('channel_id', channelId);

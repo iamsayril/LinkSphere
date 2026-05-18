@@ -106,7 +106,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, created_at')
       .eq('email', email)
@@ -116,7 +116,7 @@ exports.login = async (req, res) => {
       return res.status(404).json({ message: 'User profile not found' });
 
     if (user.status === 'pending') {
-      await supabase.from('user').update({ status: 'active' }).eq('email', email);
+      await supabaseAdmin.from('user').update({ status: 'active' }).eq('email', email);
       user.status = 'active';
     }
 
@@ -130,7 +130,7 @@ exports.login = async (req, res) => {
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 exports.me = async (req, res) => {
   try {
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, created_at')
       .eq('user_id', req.user.user_id)
@@ -153,14 +153,14 @@ exports.confirm = async (req, res) => {
     if (!token_hash || !type)
       return res.status(400).json({ message: 'token_hash and type are required' });
 
-    const { data, error } = await supabase.auth.verifyOtp({ token_hash, type });
+    const { data, error } = await supabaseAdmin.auth.verifyOtp({ token_hash, type });
 
     if (error || !data.user)
       return res.status(400).json({ message: 'Invalid or expired confirmation link' });
 
     const email = data.user.email;
 
-    let { data: user } = await supabase
+    let { data: user } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, created_at')
       .eq('email', email)
@@ -168,7 +168,7 @@ exports.confirm = async (req, res) => {
 
     if (!user) {
       const name = data.user.user_metadata?.name || email.split('@')[0];
-      const { data: newUser, error: insertError } = await supabase
+      const { data: newUser, error: insertError } = await supabaseAdmin
         .from('user')
         .insert({
           user_id:    data.user.id,
@@ -183,7 +183,7 @@ exports.confirm = async (req, res) => {
       console.log('CONFIRM INSERT ERROR:', insertError);
       user = newUser;
     } else if (user.status === 'pending') {
-      await supabase.from('user').update({ status: 'active' }).eq('email', email);
+      await supabaseAdmin.from('user').update({ status: 'active' }).eq('email', email);
       user.status = 'active';
     }
 
@@ -202,14 +202,14 @@ exports.session = async (req, res) => {
     if (!access_token)
       return res.status(400).json({ message: 'access_token is required' });
 
-    const { data, error } = await supabase.auth.getUser(access_token);
+    const { data, error } = await supabaseAdmin.auth.getUser(access_token);
 
     if (error || !data.user)
       return res.status(401).json({ message: 'Invalid or expired token' });
 
     const email = data.user.email;
 
-    let { data: user } = await supabase
+    let { data: user } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, created_at')
       .eq('email', email)
@@ -217,7 +217,7 @@ exports.session = async (req, res) => {
 
     if (!user) {
       const name = data.user.user_metadata?.name || email.split('@')[0];
-      const { data: newUser, error: insertError } = await supabase
+      const { data: newUser, error: insertError } = await supabaseAdmin
         .from('user')
         .insert({
           user_id:    data.user.id,

@@ -5,7 +5,7 @@ const getProfile = async (req, res) => {
   try {
     const user_id = req.user.user_id;
 
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, avatar_url, created_at')
       .eq('user_id', user_id)
@@ -47,7 +47,7 @@ const updateProfile = async (req, res) => {
     if (status) updates.status = status;
     if (email)  updates.email  = email; // ← FIX: include email in DB update
 
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .update(updates)
       .eq('user_id', user_id)
@@ -76,7 +76,7 @@ const updatePassword = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .select('email')
       .eq('user_id', user_id)
@@ -84,7 +84,7 @@ const updatePassword = async (req, res) => {
 
     if (!user || error) return res.status(404).json({ error: 'User not found' });
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
       email: user.email,
       password: current_password,
     });
@@ -124,7 +124,7 @@ const updateAvatar = async (req, res) => {
     const ext = file.originalname.split('.').pop();
     const fileName = `avatars/${user_id}/avatar_${Date.now()}.${ext}`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from('linksphere-files')
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
@@ -133,11 +133,11 @@ const updateAvatar = async (req, res) => {
 
     if (uploadError) return res.status(500).json({ error: uploadError.message });
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = supabaseAdmin.storage
       .from('linksphere-files')
       .getPublicUrl(fileName);
 
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .update({ avatar_url: urlData.publicUrl })
       .eq('user_id', user_id)
@@ -159,7 +159,7 @@ const searchUsers = async (req, res) => {
 
     if (!query) return res.status(400).json({ error: 'query is required' });
 
-    const { data: users, error } = await supabase
+    const { data: users, error } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, avatar_url')
       .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
@@ -178,7 +178,7 @@ const getUserById = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('user')
       .select('user_id, name, email, status, avatar_url, created_at')
       .eq('user_id', userId)
@@ -200,7 +200,7 @@ const deleteAccount = async (req, res) => {
 
     if (!password) return res.status(400).json({ error: 'password is required' });
 
-    const { data: user } = await supabase
+    const { data: user } = await supabaseAdmin
       .from('user')
       .select('email')
       .eq('user_id', user_id)
@@ -208,7 +208,7 @@ const deleteAccount = async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
       email: user.email,
       password: password,
     });
@@ -217,7 +217,7 @@ const deleteAccount = async (req, res) => {
       return res.status(401).json({ error: 'Incorrect password' });
     }
 
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from('user')
       .delete()
       .eq('user_id', user_id);

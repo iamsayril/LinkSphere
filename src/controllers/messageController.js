@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 
 // POST /api/messages OR POST /api/channels/:channelId/messages
 const sendMessage = async (req, res) => {
@@ -11,7 +11,7 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({ error: 'channel_id and content are required' });
     }
 
-    const { data: member } = await supabase
+    const { data: member } = await supabaseAdmin
       .from('channel_member')
       .select('channel_member_id')
       .eq('channel_id', channel_id)
@@ -22,7 +22,7 @@ const sendMessage = async (req, res) => {
       return res.status(403).json({ error: 'You are not a member of this channel' });
     }
 
-    const { data: message, error } = await supabase
+    const { data: message, error } = await supabaseAdmin
       .from('message')
       .insert({
         channel_id,
@@ -65,7 +65,7 @@ const getMessages = async (req, res) => {
     const { limit = 50, before } = req.query;
     const user_id = req.user.user_id;
 
-    const { data: member } = await supabase
+    const { data: member } = await supabaseAdmin
       .from('channel_member')
       .select('channel_member_id')
       .eq('channel_id', channelId)
@@ -76,7 +76,7 @@ const getMessages = async (req, res) => {
       return res.status(403).json({ error: 'You are not a member of this channel' });
     }
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('message')
       .select(`
         message_id,
@@ -112,7 +112,7 @@ const getThread = async (req, res) => {
     const { messageId } = req.params;
     const user_id = req.user.user_id;
 
-    const { data: parent } = await supabase
+    const { data: parent } = await supabaseAdmin
       .from('message')
       .select('channel_id')
       .eq('message_id', messageId)
@@ -120,7 +120,7 @@ const getThread = async (req, res) => {
 
     if (!parent) return res.status(404).json({ error: 'Message not found' });
 
-    const { data: member } = await supabase
+    const { data: member } = await supabaseAdmin
       .from('channel_member')
       .select('channel_member_id')
       .eq('channel_id', parent.channel_id)
@@ -129,7 +129,7 @@ const getThread = async (req, res) => {
 
     if (!member) return res.status(403).json({ error: 'Access denied' });
 
-    const { data: replies, error } = await supabase
+    const { data: replies, error } = await supabaseAdmin
       .from('message')
       .select(`
         message_id,
@@ -160,7 +160,7 @@ const editMessage = async (req, res) => {
 
     if (!content) return res.status(400).json({ error: 'content is required' });
 
-    const { data: existing } = await supabase
+    const { data: existing } = await supabaseAdmin
       .from('message')
       .select('user_id, channel_id')
       .eq('message_id', messageId)
@@ -169,7 +169,7 @@ const editMessage = async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Message not found' });
     if (existing.user_id !== user_id) return res.status(403).json({ error: 'You can only edit your own messages' });
 
-    const { data: message, error } = await supabase
+    const { data: message, error } = await supabaseAdmin
       .from('message')
       .update({ content, updated_at: new Date().toISOString() })
       .eq('message_id', messageId)
@@ -200,7 +200,7 @@ const deleteMessage = async (req, res) => {
     const { messageId } = req.params;
     const user_id = req.user.user_id;
 
-    const { data: existing } = await supabase
+    const { data: existing } = await supabaseAdmin
       .from('message')
       .select('user_id, channel_id')
       .eq('message_id', messageId)
@@ -209,7 +209,7 @@ const deleteMessage = async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Message not found' });
     if (existing.user_id !== user_id) return res.status(403).json({ error: 'You can only delete your own messages' });
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('message')
       .delete()
       .eq('message_id', messageId);
@@ -234,7 +234,7 @@ const addReaction = async (req, res) => {
 
     if (!emoji) return res.status(400).json({ error: 'emoji is required' });
 
-    const { data: message } = await supabase
+    const { data: message } = await supabaseAdmin
       .from('message')
       .select('channel_id')
       .eq('message_id', messageId)
@@ -242,7 +242,7 @@ const addReaction = async (req, res) => {
 
     if (!message) return res.status(404).json({ error: 'Message not found' });
 
-    const { data: reaction, error } = await supabase
+    const { data: reaction, error } = await supabaseAdmin
       .from('reaction')
       .upsert({
         message_id: messageId,
@@ -270,13 +270,13 @@ const removeReaction = async (req, res) => {
     const { messageId, emoji } = req.params;
     const user_id = req.user.user_id;
 
-    const { data: message } = await supabase
+    const { data: message } = await supabaseAdmin
       .from('message')
       .select('channel_id')
       .eq('message_id', messageId)
       .single();
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('reaction')
       .delete()
       .eq('message_id', messageId)
