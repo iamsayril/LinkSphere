@@ -134,6 +134,7 @@ const startCall = async (req, res, next) => {
         channel_id,
         call_type,
         livekit_room:     null,
+        start_time:       new Date().toISOString(),   // ← add this
         max_participants: call_type === 'audio' ? 999 : 25,
       })
       .select()
@@ -177,15 +178,19 @@ const startCall = async (req, res, next) => {
 
     if (participantError) throw participantError;
 
-    // Audit log
-    await createAuditLog({
-      action_type:  'CALL_ENDED',       // also fix: was wrongly 'CALL_STARTED'
-      type:         'call',
-      status:       'success',
-      workspace_id: call.channel.workspace_id,  // ✅ use the already-fetched `call`
-      channel_id:   call.channel_id,            // ✅
-      user_id:      userId,
-    });
+    // Audit log (non-fatal)
+    try {
+      await createAuditLog({
+        action_type:  'CALL_STARTED',
+        type:         'call',
+        status:       'success',
+        workspace_id: channel.workspace_id,
+        channel_id,
+        user_id:      userId,
+      });
+    } catch (auditErr) {
+      console.warn('[startCall] Audit log failed (non-fatal):', auditErr.message);
+    }
 
     // FIX: was wsService.broadcastToChannel(...) — now uses req.app
     broadcastToChannel(req.app, channel_id, {
@@ -416,11 +421,11 @@ const endCall = async (req, res, next) => {
     // Audit log
     try {
       await createAuditLog({
-        action_type:  'CALL_STARTED',
+        action_type:  'CALL_ENDED',           // also fix the action type
         type:         'call',
         status:       'success',
-        workspace_id: access.workspace_id,
-        channel_id,
+        workspace_id: call.channel?.workspace_id ?? null,  // ✅ already fetched above
+        channel_id:   call.channel_id ?? null,             // ✅ from the call row
         user_id:      userId,
       });
     } catch (auditErr) {
