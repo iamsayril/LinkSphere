@@ -21,7 +21,9 @@ const {
   getActiveCall,
   getCallHistory,
   livekitWebhook,
-} = require('../controllers/callController');  // ✅ matches your actual filename
+  startDmCall,
+  endDmCall,
+} = require('../controllers/callController');
 
 const { AccessToken } = require('livekit-server-sdk');
 
@@ -91,4 +93,7 @@ router.get('/:callId/participants',                          getCallParticipants
 // REQ-17: force-mute a participant (host / admin)
 router.post('/:callId/participants/:targetUserId/mute',      muteParticipant);
 
+// ── DM Call routes ─────────────────────────────────────────────────────────
+router.post('/dm',         authenticate, startDmCall);
+router.post('/dm/:dmCallId/end', authenticate, endDmCall);
 module.exports = router;

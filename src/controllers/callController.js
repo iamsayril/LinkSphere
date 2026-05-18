@@ -700,4 +700,72 @@ module.exports = {
   getActiveCall,
   getCallHistory,
   livekitWebhook,
+  startDmCall,
+  endDmCall,
+};
+
+// ─────────────────────────────────────────────
+// DM Call: Start
+// ─────────────────────────────────────────────
+const startDmCall = async (req, res, next) => {
+  try {
+    const { receiver_id, room_name, call_type = 'audio' } = req.body;
+    const caller_id = req.user.user_id;
+
+    if (!receiver_id || !room_name) {
+      return res.status(400).json({ error: 'receiver_id and room_name are required' });
+    }
+
+    const { data: dmCall, error } = await supabase
+      .from('dm_call')
+      .insert({
+        caller_id,
+        receiver_id,
+        room_name,
+        call_type,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return res.status(201).json({ dm_call: dmCall });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────
+// DM Call: End
+// ─────────────────────────────────────────────
+const endDmCall = async (req, res, next) => {
+  try {
+    const { dmCallId } = req.params;
+    const userId = req.user.user_id;
+
+    const { data: dmCall, error: fetchError } = await supabase
+      .from('dm_call')
+      .select('*')
+      .eq('dm_call_id', dmCallId)
+      .single();
+
+    if (fetchError || !dmCall) {
+      return res.status(404).json({ error: 'DM call not found' });
+    }
+
+    if (dmCall.caller_id !== userId && dmCall.receiver_id !== userId) {
+      return res.status(403).json({ error: 'Not authorized to end this call' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('dm_call')
+      .update({ end_time: new Date().toISOString() })
+      .eq('dm_call_id', dmCallId);
+
+    if (updateError) throw updateError;
+
+    return res.json({ message: 'DM call ended successfully' });
+  } catch (err) {
+    next(err);
+  }
 };
