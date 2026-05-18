@@ -167,14 +167,15 @@ const startCall = async (req, res, next) => {
 
     // Add caller as first participant
     const { error: participantError } = await supabase
-      .from('call_participant')
-      .insert({
-        call_id:          call.call_id,
-        user_id:          userId,
-        livekit_identity: userId,
-        audio_enabled:    true,
-        video_enabled:    call_type !== 'audio',
-      });
+  .from('call_participant')
+  .insert({
+    call_id:          call.call_id,
+    user_id:          userId,
+    livekit_identity: userId,
+    audio_enabled:    true,
+    video_enabled:    call_type !== 'audio',
+    joined_at:        new Date().toISOString(),  // ← ADD THIS
+  });
 
     if (participantError) throw participantError;
 
