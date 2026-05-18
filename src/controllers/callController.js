@@ -87,16 +87,28 @@ const startCall = async (req, res, next) => {
     }
 
     // Verify the user is a workspace member for this channel
-    const { data: access, error: accessError } = await supabase
+    const { data: channel, error: channelError } = await supabase
       .from('channel')
-      .select('channel_id, workspace_id, workspace_member!inner(user_id)')
+      .select('channel_id, workspace_id')
       .eq('channel_id', channel_id)
-      .eq('workspace_member.user_id', userId)
       .single();
 
-    if (accessError || !access) {
-      return res.status(403).json({ error: 'You are not a member of this channel' });
+    if (channelError || !channel) {
+      return res.status(404).json({ error: 'Channel not found' });
     }
+
+    const { data: member, error: memberError } = await supabase
+      .from('workspace_member')
+      .select('user_id')
+      .eq('workspace_id', channel.workspace_id)
+      .eq('user_id', userId)
+      .single();
+
+    if (memberError || !member) {
+      return res.status(403).json({ error: 'You are not a member of this workspace' });
+    }
+
+    const access = channel;
 
     // Check no active call is already running in this channel
     const { data: existing } = await supabase
