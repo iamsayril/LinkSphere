@@ -112,12 +112,12 @@ const startCall = async (req, res, next) => {
 
     // Check no active call is already running in this channel
     const { data: existing, error: existingError } = await supabase
-      .from('call')
-      .select('call_id')
-      .eq('channel_id', channel_id)
-      .is('end_time', null)
-      .limit(1)
-      .maybeSingle();
+  .from('call')
+  .select('call_id')
+  .eq('channel_id', channel_id)
+  .is('end_time', null)
+  .limit(1)
+  .maybeSingle();
 
     if (existing) {
       return res.status(409).json({
@@ -134,7 +134,7 @@ const startCall = async (req, res, next) => {
         channel_id,
         call_type,
         livekit_room:     null,
-        start_time:       new Date().toISOString(),
+        start_time:       new Date().toISOString(),   // ← add this
         max_participants: call_type === 'audio' ? 999 : 25,
       })
       .select()
@@ -167,15 +167,15 @@ const startCall = async (req, res, next) => {
 
     // Add caller as first participant
     const { error: participantError } = await supabase
-      .from('call_participant')
-      .insert({
-        call_id:          call.call_id,
-        user_id:          userId,
-        livekit_identity: userId,
-        audio_enabled:    true,
-        video_enabled:    call_type !== 'audio',
-        joined_at:        new Date().toISOString(),
-      });
+  .from('call_participant')
+  .insert({
+    call_id:          call.call_id,
+    user_id:          userId,
+    livekit_identity: userId,
+    audio_enabled:    true,
+    video_enabled:    call_type !== 'audio',
+    joined_at:        new Date().toISOString(),  // ← ADD THIS
+  });
 
     if (participantError) throw participantError;
 
@@ -193,6 +193,7 @@ const startCall = async (req, res, next) => {
       console.warn('[startCall] Audit log failed (non-fatal):', auditErr.message);
     }
 
+    // FIX: was wsService.broadcastToChannel(...) — now uses req.app
     broadcastToChannel(req.app, channel_id, {
       event: 'CALL_STARTED',
       data:  { call_id: call.call_id, started_by: userId, call_type, channel_id },
@@ -216,9 +217,7 @@ const startCall = async (req, res, next) => {
         token: await generateToken(roomName, userId, userName),
       },
     });
-
   } catch (err) {
-    console.error('[startCall] FULL ERROR:', JSON.stringify(err, null, 2), err.message, err.stack);
     next(err);
   }
 };
