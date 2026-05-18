@@ -6,7 +6,7 @@
  */
 
 const { AccessToken, RoomServiceClient, WebhookReceiver } = require('livekit-server-sdk');
-const { supabaseAdmin }            = require('../config/supabaseAdmin');
+const { supabaseAdmin }            = require('../config/supabase');
 const notificationService     = require('../services/notificationService');
 const { createAuditLog }      = require('../services/auditService');
 
