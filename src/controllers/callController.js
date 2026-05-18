@@ -690,20 +690,6 @@ const livekitWebhook = async (req, res, next) => {
 // ─────────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────────
-module.exports = {
-  startCall,
-  joinCall,
-  leaveCall,
-  endCall,
-  getCallParticipants,
-  muteParticipant,
-  getActiveCall,
-  getCallHistory,
-  livekitWebhook,
-  startDmCall,
-  endDmCall,
-};
-
 // ─────────────────────────────────────────────
 // DM Call: Start
 // ─────────────────────────────────────────────
@@ -768,4 +754,21 @@ const endDmCall = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+// ─────────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────────
+module.exports = {
+  startCall,
+  joinCall,
+  leaveCall,
+  endCall,
+  getCallParticipants,
+  muteParticipant,
+  getActiveCall,
+  getCallHistory,
+  livekitWebhook,
+  startDmCall,
+  endDmCall,
 };
