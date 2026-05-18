@@ -5,7 +5,7 @@
  * LinkSphere — Voice & Video Call Controller
  */
 
-const { AccessToken, RoomServiceClient, WebhookReceiver } = require('livekit-server-sdk');
+const { AccessToken, RoomServiceClient, WebhookReceiver, TrackSource } = require('livekit-server-sdk');
 const { supabaseAdmin }            = require('../config/supabase');
 const notificationService     = require('../services/notificationService');
 const { createAuditLog }      = require('../services/auditService');
@@ -55,7 +55,7 @@ async function generateToken(roomName, userId, userName, overrides = {}) {
     roomJoin:          true,
     room:              roomName,
     canPublish:        true,
-    canPublishSources: ['camera', 'microphone'],
+    canPublishSources: [TrackSource.CAMERA, TrackSource.MICROPHONE],  // ← use enum
     canSubscribe:      true,
     canPublishData:    true,
     roomAdmin:         overrides.roomAdmin ?? false,
@@ -309,8 +309,8 @@ const joinCall = async (req, res, next) => {
         url:   LK_URL,
         token: await generateToken(call.livekit_room ?? callId, userId, userName, {
           canPublishSources: videoEnabled
-            ? ['camera', 'microphone']
-            : ['microphone'],
+            ? [TrackSource.CAMERA, TrackSource.MICROPHONE]   // ← enum
+            : [TrackSource.MICROPHONE],                       // ← enum
         }),
       },
     });
