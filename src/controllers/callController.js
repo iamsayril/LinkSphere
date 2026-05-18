@@ -65,19 +65,6 @@ async function generateToken(roomName, userId, userName, overrides = {}) {
   return await at.toJwt();
 }
 
-  at.addGrant({
-    roomJoin:          true,
-    room:              roomName,
-    canPublish:        true,
-    canPublishSources: ['camera', 'microphone'],
-    canSubscribe:      true,
-    canPublishData:    true,
-    roomAdmin:         overrides.roomAdmin ?? false,
-    ...overrides,
-  });
-
-  return at.toJwt();
-
 async function safeDeleteRoom(roomName) {
   try {
     await roomService.deleteRoom(roomName);
@@ -124,13 +111,13 @@ const startCall = async (req, res, next) => {
     const access = channel;
 
     // Check no active call is already running in this channel
-    const { data: existing } = await supabase
-      .from('call')
-      .select('call_id')
-      .eq('channel_id', channel_id)
-      .is('end_time', null)
-      .limit(1)
-      .single();
+    const { data: existing, error: existingError } = await supabase
+  .from('call')
+  .select('call_id')
+  .eq('channel_id', channel_id)
+  .is('end_time', null)
+  .limit(1)
+  .maybeSingle();
 
     if (existing) {
       return res.status(409).json({
@@ -192,11 +179,11 @@ const startCall = async (req, res, next) => {
 
     // Audit log
     await createAuditLog({
-      action_type:  'CALL_STARTED',
+      action_type:  'CALL_ENDED',       // also fix: was wrongly 'CALL_STARTED'
       type:         'call',
       status:       'success',
-      workspace_id: access.workspace_id,
-      channel_id,
+      workspace_id: call.channel.workspace_id,  // ✅ use the already-fetched `call`
+      channel_id:   call.channel_id,            // ✅
       user_id:      userId,
     });
 
