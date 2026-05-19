@@ -239,14 +239,21 @@ const addReaction = async (req, res) => {
 
     if (!message) return res.status(404).json({ error: 'Message not found' });
 
+    // Remove any existing reaction by this user on this message first
+    await supabaseAdmin
+      .from('reaction')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('user_id', user_id);
+
     const { data: reaction, error } = await supabaseAdmin
       .from('reaction')
-      .upsert({
+      .insert({
         message_id: messageId,
         user_id,
         emoji,
         channel_id: message.channel_id,
-      }, { onConflict: 'message_id,user_id,emoji' })
+      })
       .select()
       .single();
 

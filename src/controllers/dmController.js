@@ -321,14 +321,20 @@ const addDmReaction = async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Remove any existing reaction by this user on this message first
+    await supabaseAdmin
+      .from('dm_reaction')
+      .delete()
+      .eq('dm_id', dmId)
+      .eq('user_id', user_id);
+
     const { data: reaction, error } = await supabaseAdmin
-  .from('dm_reaction')
-  .upsert(
-    { dm_id: dmId, user_id, emoji },
-    { onConflict: 'dm_id,user_id,emoji' }
-  )
-  .select()
-  .single();
+      .from('dm_reaction')
+      .insert(
+        { dm_id: dmId, user_id, emoji }
+      )
+      .select()
+      .single();
 
     if (error) return res.status(500).json({ error: error.message });
 
