@@ -11,16 +11,15 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({ error: 'channel_id and content are required' });
     }
 
-    const { data: member } = await supabaseAdmin
-      .from('channel_member')
-      .select('channel_member_id')
-      .eq('channel_id', channel_id)
-      .eq('user_id', user_id)
-      .single();
+    const { data: members } = await supabaseAdmin
+  .from('channel_member')
+  .select('channel_member_id')
+  .eq('channel_id', channel_id)
+  .eq('user_id', user_id);
 
-    if (!member) {
-      return res.status(403).json({ error: 'You are not a member of this channel' });
-    }
+if (!members || members.length === 0) {
+  return res.status(403).json({ error: 'You are not a member of this channel' });
+}
 
     const { data: message, error } = await supabaseAdmin
       .from('message')
@@ -65,16 +64,15 @@ const getMessages = async (req, res) => {
     const { limit = 50, before } = req.query;
     const user_id = req.user.user_id;
 
-    const { data: member } = await supabaseAdmin
-      .from('channel_member')
-      .select('channel_member_id')
-      .eq('channel_id', channelId)
-      .eq('user_id', user_id)
-      .single();
+    const { data: members } = await supabaseAdmin
+  .from('channel_member')
+  .select('channel_member_id')
+  .eq('channel_id', channelId)
+  .eq('user_id', user_id);
 
-    if (!member) {
-      return res.status(403).json({ error: 'You are not a member of this channel' });
-    }
+if (!members || members.length === 0) {
+  return res.status(403).json({ error: 'You are not a member of this channel' });
+}
 
     let query = supabaseAdmin
       .from('message')
@@ -120,14 +118,13 @@ const getThread = async (req, res) => {
 
     if (!parent) return res.status(404).json({ error: 'Message not found' });
 
-    const { data: member } = await supabaseAdmin
-      .from('channel_member')
-      .select('channel_member_id')
-      .eq('channel_id', parent.channel_id)
-      .eq('user_id', user_id)
-      .single();
+    const { data: members } = await supabaseAdmin
+  .from('channel_member')
+  .select('channel_member_id')
+  .eq('channel_id', parent.channel_id)
+  .eq('user_id', user_id);
 
-    if (!member) return res.status(403).json({ error: 'Access denied' });
+if (!members || members.length === 0) return res.status(403).json({ error: 'Access denied' });
 
     const { data: replies, error } = await supabaseAdmin
       .from('message')
