@@ -75,7 +75,7 @@ const getDmMessages = async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('direct_message')
-      .select('dm_id, content, created_at, sender_id, receiver_id, read, file_url, file_name, file_type, file_size')
+      .select('dm_id, content, created_at, sender_id, receiver_id, read, file_url, file_name, file_type, file_size, reactions:dm_reaction(dm_reaction_id, emoji, user_id)')
       .or(
         `and(sender_id.eq.${user_id},receiver_id.eq.${other_id}),and(sender_id.eq.${other_id},receiver_id.eq.${user_id})`
       )
@@ -299,4 +299,93 @@ const proxyVideo = (req, res) => {
   upstream.end();
 };
 
-module.exports = { getConversations, getDmMessages, sendDm, uploadDmFile, proxyVideo };
+// POST /api/dm/:dmId/reactions
+const addDmReaction = async (req, res) => {
+  try {
+    const { dmId } = req.params;
+    const { emoji } = req.body;
+    const user_id = req.user.user_id;
+
+    if (!emoji) return res.status(400).json({ error: 'emoji is required' });
+
+    const { data: dm } = await supabaseAdmin
+      .from('direct_message')
+      .select('dm_id, sender_id, receiver_id')
+      .eq('dm_id', dmId)
+      .single();
+
+    if (!dm) return res.status(404).json({ error: 'Message not found' });
+
+    // Only participants of the DM can react
+    if (dm.sender_id !== user_id && dm.receiver_id !== user_id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { data: reaction, error } = await supabaseAdmin
+      .from('dm_reaction')
+      .upsert(
+        { dm_id: dmId, user_id, emoji },
+        { onConflict: 'dm_id,user_id,emoji' }
+      )
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const io = req.app.get('io');
+    if (io) {
+      const roomA = `user:${dm.sender_id}`;
+      const roomB = `user:${dm.receiver_id}`;
+      io.to(roomA).to(roomB).emit('dm_reaction_added', { dm_id: dmId, reaction });
+    }
+
+    return res.status(201).json(reaction);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/dm/:dmId/reactions/:emoji
+const removeDmReaction = async (req, res) => {
+  try {
+    const { dmId, emoji } = req.params;
+    const user_id = req.user.user_id;
+
+    const { data: dm } = await supabaseAdmin
+      .from('direct_message')
+      .select('dm_id, sender_id, receiver_id')
+      .eq('dm_id', dmId)
+      .single();
+
+    if (!dm) return res.status(404).json({ error: 'Message not found' });
+
+    if (dm.sender_id !== user_id && dm.receiver_id !== user_id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('dm_reaction')
+      .delete()
+      .eq('dm_id', dmId)
+      .eq('user_id', user_id)
+      .eq('emoji', decodeURIComponent(emoji));
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${dm.sender_id}`).to(`user:${dm.receiver_id}`)
+        .emit('dm_reaction_removed', { dm_id: dmId, emoji, user_id });
+    }
+
+    return res.json({ message: 'Reaction removed' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+
+module.exports = { 
+  getConversations, getDmMessages, sendDm, uploadDmFile, proxyVideo,
+  addDmReaction, removeDmReaction  // add these
+};

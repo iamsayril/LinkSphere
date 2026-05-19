@@ -7,6 +7,8 @@ const {
   sendDm,
   uploadDmFile,
   proxyVideo,
+  addDmReaction,    // add
+  removeDmReaction,
 } = require('../controllers/dmController');
 
 router.use(authenticate);
