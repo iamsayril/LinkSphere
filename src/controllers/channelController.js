@@ -260,14 +260,12 @@ const getVoiceMembers = async (req, res) => {
     const io = req.app.get('io');
     if (!io) return res.json([]);
 
-    // Return members tracked in socket room state
-    const room = io.sockets.adapter.rooms.get(`voice:${channelId}`);
-    if (!room || !room.size) return res.json([]);
-
     const members = [];
-    for (const socketId of room) {
-      const s = io.sockets.sockets.get(socketId);
-      if (s && s.voiceUser) members.push(s.voiceUser);
+    const sockets = await io.fetchSockets();
+    for (const s of sockets) {
+      if (s.voiceChannelId === channelId && s.voiceUser) {
+        members.push(s.voiceUser);
+      }
     }
 
     return res.json(members);

@@ -116,14 +116,12 @@ io.on('connection', (socket) => {
     const { channelId, userId, userName, avatar_url } = data;
     console.log(`🎙️ ${userName} joined voice channel: ${channelId}`);
 
-    // Track on socket for persistence
     socket.voiceChannelId = channelId;
     socket.voiceUser = { user_id: userId, name: userName, avatar_url: avatar_url || null, muted: false };
 
-    // Join a dedicated voice room so we can query members
     socket.join(`voice:${channelId}`);
+    socket.join(channelId); // ← add this so broadcasts reach everyone
 
-    // Broadcast to everyone else in the channel
     socket.to(channelId).emit('voice_member_joined', { channelId, userId, userName, avatar_url });
   });
 
@@ -134,6 +132,7 @@ io.on('connection', (socket) => {
     socket.voiceChannelId = null;
     socket.voiceUser = null;
     socket.leave(`voice:${channelId}`);
+    socket.leave(channelId); // ← add this
 
     socket.to(channelId).emit('voice_member_left', { channelId, userId });
   });
