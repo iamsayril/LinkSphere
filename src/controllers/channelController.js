@@ -230,36 +230,6 @@ const deleteChannel = async (req, res) => {
   }
 };
 
-// DELETE /api/channels/:channelId
-const deleteChannel = async (req, res) => {
-  try {
-    const { channelId } = req.params;
-    const user_id = req.user.user_id;
-
-    const { data: member } = await supabaseAdmin
-      .from('channel_member')
-      .select('role')
-      .eq('channel_id', channelId)
-      .eq('user_id', user_id)
-      .single();
-
-    if (!member || member.role !== 'admin') {
-      return res.status(403).json({ error: 'Only channel admins can delete the channel' });
-    }
-
-    const { error } = await supabaseAdmin
-      .from('channel')
-      .delete()
-      .eq('channel_id', channelId);
-
-    if (error) return res.status(500).json({ error: error.message });
-
-    return res.json({ message: 'Channel deleted successfully' });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
-
 // GET /api/channels/:channelId/voice-members
 const getVoiceMembers = async (req, res) => {
   try {
