@@ -17,6 +17,8 @@ router.get('/conversations', getConversations);  // GET  /api/dm/conversations
 router.get('/proxy-video',   proxyVideo);         // GET  /api/dm/proxy-video?url=...
 router.post('/upload',       uploadDmFile);       // POST /api/dm/upload
 router.post('/',             sendDm);             // POST /api/dm
+router.post('/:dmId/reactions',         addDmReaction);
+router.delete('/:dmId/reactions/:emoji', removeDmReaction);
 router.get('/:userId',       getDmMessages);      // GET  /api/dm/:userId  ← must be last
 
 module.exports = router;

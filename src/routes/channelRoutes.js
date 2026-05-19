@@ -12,6 +12,8 @@ const {
 const {
   getMessages,
   sendMessage,
+  addReaction,
+  removeReaction,
 } = require('../controllers/messageController');
 const { authenticate } = require('../middleware/authMiddleware');
 
@@ -26,5 +28,7 @@ router.patch('/:channelId', updateChannel);
 router.delete('/:channelId', deleteChannel);
 router.get('/:channelId/messages', getMessages);
 router.post('/:channelId/messages', sendMessage);
+router.post('/:channelId/messages/:messageId/reactions', addReaction);
+router.delete('/:channelId/messages/:messageId/reactions/:emoji', removeReaction);
 
 module.exports = router;
