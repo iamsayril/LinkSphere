@@ -38,8 +38,9 @@ router.post(
 );
 
 // ── LiveKit token — generate a JWT for the client to connect
+// ── LiveKit token — generate a JWT for the client to connect
 router.post('/token', authenticate, async (req, res) => {
-  const { roomName, participantName } = req.body;
+  const { roomName, participantName, metadata } = req.body;  // ← add metadata
 
   if (!roomName || !participantName) {
     return res.status(400).json({ error: 'roomName and participantName are required' });
@@ -49,7 +50,11 @@ router.post('/token', authenticate, async (req, res) => {
     const token = new AccessToken(
       process.env.LIVEKIT_API_KEY,
       process.env.LIVEKIT_API_SECRET,
-      { identity: participantName, ttl: '1h' }
+      { 
+        identity: participantName, 
+        ttl: '1h',
+        metadata: metadata || '',  // ← add this
+      }
     );
 
     token.addGrant({
