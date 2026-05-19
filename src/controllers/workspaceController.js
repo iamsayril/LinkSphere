@@ -507,7 +507,7 @@ const joinByCode = async (req, res) => {
 
   if (userError || !user) return res.status(500).json({ error: 'Could not fetch user info' });
 
-  const { data: newMember, error: memberError } = await supabase
+  const { data: newMember, error: memberError } = await supabaseAdmin
     .from('workspace_member')
     .insert({
       workspace_id: workspace.workspace_id,
