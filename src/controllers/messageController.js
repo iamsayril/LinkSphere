@@ -246,6 +246,13 @@ const addReaction = async (req, res) => {
       .eq('message_id', messageId)
       .eq('user_id', user_id);
 
+    // Delete any existing reaction by this user on this message (enforces 1 reaction per user)
+    await supabaseAdmin
+      .from('reaction')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('user_id', user_id);
+
     const { data: reaction, error } = await supabaseAdmin
       .from('reaction')
       .insert({
@@ -256,6 +263,8 @@ const addReaction = async (req, res) => {
       })
       .select()
       .single();
+
+    if (error) return res.status(500).json({ error: error.message });
 
     if (error) return res.status(500).json({ error: error.message });
 
