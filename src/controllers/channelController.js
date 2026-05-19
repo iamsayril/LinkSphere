@@ -50,13 +50,13 @@ const createChannel = async (req, res) => {
     }));
 
     const { error: memberError } = await supabaseAdmin
-      .from('channel_member')
-      .insert(channelMembers);
+  .from('channel_member')
+  .upsert(channelMembers, { onConflict: 'channel_id,user_id' });
 
-    if (memberError) {
-      await supabaseAdmin.from('channel').delete().eq('channel_id', channel.channel_id);
-      return res.status(500).json({ error: 'Failed to add members: ' + memberError.message });
-    }
+if (memberError) {
+  await supabaseAdmin.from('channel').delete().eq('channel_id', channel.channel_id);
+  return res.status(500).json({ error: 'Failed to add members: ' + memberError.message });
+}
 
     return res.status(201).json(channel);
   } catch (err) {
