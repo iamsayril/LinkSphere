@@ -23,9 +23,11 @@ const createChannel = async (req, res) => {
     }
 
     // Create channel
+    const { type } = req.body;
+
     const { data: channel, error } = await supabaseAdmin
       .from('channel')
-      .insert({ name, workspace_id, created_at: new Date().toISOString() })
+      .insert({ name, workspace_id, type: type || 'text', created_at: new Date().toISOString() })
       .select()
       .single();
 
@@ -189,35 +191,40 @@ const leaveChannel = async (req, res) => {
 };
 
 // PATCH /api/channels/:channelId
-const updateChannel = async (req, res) => {
+const deleteChannel = async (req, res) => {
   try {
     const { channelId } = req.params;
-    const { name } = req.body;
     const user_id = req.user.user_id;
 
-    if (!name) return res.status(400).json({ error: 'name is required' });
-
-    const { data: member } = await supabaseAdmin
-      .from('channel_member')
-      .select('role')
+    // Get channel to find workspace_id
+    const { data: channel } = await supabaseAdmin
+      .from('channel')
+      .select('workspace_id')
       .eq('channel_id', channelId)
+      .single();
+
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+    // Check workspace role — only owner can delete
+    const { data: wsMember } = await supabaseAdmin
+      .from('workspace_member')
+      .select('role')
+      .eq('workspace_id', channel.workspace_id)
       .eq('user_id', user_id)
       .single();
 
-    if (!member || member.role !== 'admin') {
-      return res.status(403).json({ error: 'Only channel admins can update the channel' });
+    if (!wsMember || wsMember.role !== 'owner') {
+      return res.status(403).json({ error: 'Only workspace owners can delete channels' });
     }
 
-    const { data: channel, error } = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('channel')
-      .update({ name })
-      .eq('channel_id', channelId)
-      .select()
-      .single();
+      .delete()
+      .eq('channel_id', channelId);
 
     if (error) return res.status(500).json({ error: error.message });
 
-    return res.json(channel);
+    return res.json({ message: 'Channel deleted successfully' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
