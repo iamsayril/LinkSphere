@@ -75,7 +75,7 @@ const getDmMessages = async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('direct_message')
-      .select('dm_id, content, created_at, sender_id, receiver_id, read, file_url, file_name, file_type, file_size, reactions:dm_reaction(dm_reaction_id, emoji, user_id)')
+      .select(`dm_id, content, created_at, sender_id, receiver_id, read, file_url, file_name, file_type, file_size, dm_reaction(dm_reaction_id, emoji, user_id)`)
       .or(
         `and(sender_id.eq.${user_id},receiver_id.eq.${other_id}),and(sender_id.eq.${other_id},receiver_id.eq.${user_id})`
       )
@@ -322,13 +322,13 @@ const addDmReaction = async (req, res) => {
     }
 
     const { data: reaction, error } = await supabaseAdmin
-      .from('dm_reaction')
-      .upsert(
-        { dm_id: dmId, user_id, emoji },
-        { onConflict: 'dm_id,user_id,emoji' }
-      )
-      .select()
-      .single();
+  .from('dm_reaction')
+  .upsert(
+    { dm_id: dmId, user_id, emoji },
+    { onConflict: 'dm_id,user_id,emoji' }
+  )
+  .select()
+  .single();
 
     if (error) return res.status(500).json({ error: error.message });
 
