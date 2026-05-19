@@ -88,7 +88,14 @@ router.post('/',                startCall);
 // REQ-12, REQ-16: join an active call
 router.post('/:callId/join',    joinCall);
 // Leave a call (self)
-router.post('/:callId/leave',   leaveCall);
+// Leave a call (self)
+router.post('/:callId/leave', (req, res, next) => {
+  // support token from query string (for sendBeacon on page close)
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticate, leaveCall);
 // REQ-17: end call (host or admin)
 router.post('/:callId/end',     endCall);
 
