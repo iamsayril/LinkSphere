@@ -253,6 +253,29 @@ const deleteChannel = async (req, res) => {
   }
 };
 
+// GET /api/channels/:channelId/voice-members
+const getVoiceMembers = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const io = req.app.get('io');
+    if (!io) return res.json([]);
+
+    // Return members tracked in socket room state
+    const room = io.sockets.adapter.rooms.get(`voice:${channelId}`);
+    if (!room || !room.size) return res.json([]);
+
+    const members = [];
+    for (const socketId of room) {
+      const s = io.sockets.sockets.get(socketId);
+      if (s && s.voiceUser) members.push(s.voiceUser);
+    }
+
+    return res.json(members);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   createChannel,
   getChannels,
@@ -261,4 +284,5 @@ module.exports = {
   leaveChannel,
   updateChannel,
   deleteChannel,
+  getVoiceMembers,
 };

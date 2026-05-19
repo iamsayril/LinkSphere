@@ -104,8 +104,81 @@ io.on('connection', (socket) => {
 
   // ────────────────────────────────────────────────────────────────────────
 
+  // ── Voice Channel Events ─────────────────────────────────────────────────
+
+  socket.on('register', ({ userId }) => {
+    socket.userId = userId;
+    socket.join(`user:${userId}`);
+    console.log(`🎙️ Registered user: ${userId}`);
+  });
+
+  socket.on('voice_member_joined', (data) => {
+    const { channelId, userId, userName, avatar_url } = data;
+    console.log(`🎙️ ${userName} joined voice channel: ${channelId}`);
+
+    // Track on socket for persistence
+    socket.voiceChannelId = channelId;
+    socket.voiceUser = { user_id: userId, name: userName, avatar_url: avatar_url || null, muted: false };
+
+    // Join a dedicated voice room so we can query members
+    socket.join(`voice:${channelId}`);
+
+    // Broadcast to everyone else in the channel
+    socket.to(channelId).emit('voice_member_joined', { channelId, userId, userName, avatar_url });
+  });
+
+  socket.on('voice_member_left', (data) => {
+    const { channelId, userId } = data;
+    console.log(`🚪 ${userId} left voice channel: ${channelId}`);
+
+    socket.voiceChannelId = null;
+    socket.voiceUser = null;
+    socket.leave(`voice:${channelId}`);
+
+    socket.to(channelId).emit('voice_member_left', { channelId, userId });
+  });
+
+  socket.on('voice_member_mute_changed', (data) => {
+    const { channelId, userId, muted } = data;
+    socket.to(channelId).emit('voice_member_mute_changed', { channelId, userId, muted });
+  });
+
+  socket.on('voice_member_camera_changed', (data) => {
+    const { channelId, userId, cameraOn } = data;
+    socket.to(channelId).emit('voice_member_camera_changed', { channelId, userId, cameraOn });
+  });
+
+  // WebRTC Signaling
+  socket.on('webrtc_offer', (data) => {
+    const { toUserId, ...rest } = data;
+    io.to(`user:${toUserId}`).emit('webrtc_offer', { ...rest, fromUserId: socket.userId });
+  });
+
+  socket.on('webrtc_answer', (data) => {
+    const { toUserId, ...rest } = data;
+    io.to(`user:${toUserId}`).emit('webrtc_answer', { ...rest, fromUserId: socket.userId });
+  });
+
+  socket.on('webrtc_ice_candidate', (data) => {
+    const { toUserId, ...rest } = data;
+    io.to(`user:${toUserId}`).emit('webrtc_ice_candidate', { ...rest, fromUserId: socket.userId });
+  });
+
+  socket.on('webrtc_request_offer', (data) => {
+    const { toUserId, ...rest } = data;
+    io.to(`user:${toUserId}`).emit('webrtc_request_offer', { ...rest, fromUserId: socket.userId });
+  });
+
   socket.on('disconnect', () => {
     console.log(`❌ Socket disconnected: ${socket.id}`);
+
+    // Auto-remove from voice channel if they disconnect without leaving
+    if (socket.voiceChannelId && socket.voiceUser) {
+      socket.to(socket.voiceChannelId).emit('voice_member_left', {
+        channelId: socket.voiceChannelId,
+        userId: socket.voiceUser.user_id,
+      });
+    }
   });
 });
 

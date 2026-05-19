@@ -30,5 +30,6 @@ router.get('/:channelId/messages', getMessages);
 router.post('/:channelId/messages', sendMessage);
 router.post('/:channelId/messages/:messageId/reactions', addReaction);
 router.delete('/:channelId/messages/:messageId/reactions/:emoji', removeReaction);
+router.get('/:channelId/voice-members', authenticate, getVoiceMembers);
 
 module.exports = router;
