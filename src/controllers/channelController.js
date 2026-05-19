@@ -191,6 +191,51 @@ const leaveChannel = async (req, res) => {
 };
 
 // PATCH /api/channels/:channelId
+const updateChannel = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { name } = req.body;
+    const user_id = req.user.user_id;
+
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    // Get channel to find workspace_id
+    const { data: channel } = await supabaseAdmin
+      .from('channel')
+      .select('workspace_id')
+      .eq('channel_id', channelId)
+      .single();
+
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+    // Check workspace role
+    const { data: wsMember } = await supabaseAdmin
+      .from('workspace_member')
+      .select('role')
+      .eq('workspace_id', channel.workspace_id)
+      .eq('user_id', user_id)
+      .single();
+
+    if (!wsMember || !['owner', 'admin'].includes(wsMember.role)) {
+      return res.status(403).json({ error: 'Only workspace owners and admins can rename channels' });
+    }
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('channel')
+      .update({ name })
+      .eq('channel_id', channelId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// PATCH /api/channels/:channelId
 const deleteChannel = async (req, res) => {
   try {
     const { channelId } = req.params;
