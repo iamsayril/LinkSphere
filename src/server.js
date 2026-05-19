@@ -15,6 +15,7 @@ const io = new Server(server, {
       'http://127.0.0.1:3000',
       'http://localhost:3000',
       'https://linksphere-frontend.netlify.app',
+      'https://link-sphere-frontend-zeta.vercel.app',  // ← add this
       process.env.CORS_ORIGIN,
     ].filter(Boolean),
     methods: ['GET', 'POST'],
