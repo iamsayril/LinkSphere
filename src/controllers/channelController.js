@@ -24,10 +24,13 @@ const createChannel = async (req, res) => {
 
     // Create channel
     const { type } = req.body;
+    // is_private is extracted below with the insert
+
+    const { is_private } = req.body;
 
     const { data: channel, error } = await supabaseAdmin
       .from('channel')
-      .insert({ name, workspace_id, type: type || 'text', created_at: new Date().toISOString() })
+      .insert({ name, workspace_id, type: type || 'text', is_private: is_private || false, created_at: new Date().toISOString() })
       .select()
       .single();
 
@@ -44,7 +47,12 @@ const createChannel = async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch workspace members' });
     }
 
-    const channelMembers = wsMembers.map(m => ({
+    // For private channels, only add the creator. For public, add all members.
+    const membersToAdd = is_private
+      ? wsMembers.filter(m => m.user_id === user_id)
+      : wsMembers;
+
+    const channelMembers = membersToAdd.map(m => ({
       channel_id: channel.channel_id,
       user_id:    m.user_id,
       role:       m.user_id === user_id ? 'admin' : 'member',
@@ -88,16 +96,51 @@ const getChannels = async (req, res) => {
       return res.status(403).json({ error: 'You are not a member of this workspace' });
     }
 
-    // ✅ Return ALL channels in the workspace — no channel_member filter
+    // Get workspace to check if user is owner
+    const { data: workspace } = await supabaseAdmin
+      .from('workspace')
+      .select('user_id')
+      .eq('workspace_id', workspace_id)
+      .single();
+
+    const isOwner = workspace?.user_id === user_id;
+
+    // Fetch all channels
     const { data: channels, error } = await supabaseAdmin
       .from('channel')
-      .select('channel_id, name, created_at, workspace_id')
+      .select('channel_id, name, created_at, workspace_id, is_private, type')
       .eq('workspace_id', workspace_id)
       .order('created_at', { ascending: true });
 
     if (error) return res.status(500).json({ error: error.message });
 
-    return res.json(channels);
+    if (isOwner) {
+      // Owner sees all channels
+      return res.json(channels);
+    }
+
+    // For non-owners: filter out private channels they are not a member of
+    const privateChannelIds = channels
+      .filter(ch => ch.is_private)
+      .map(ch => ch.channel_id);
+
+    if (!privateChannelIds.length) {
+      return res.json(channels);
+    }
+
+    const { data: memberships } = await supabaseAdmin
+      .from('channel_member')
+      .select('channel_id')
+      .eq('user_id', user_id)
+      .in('channel_id', privateChannelIds);
+
+    const allowedPrivateIds = new Set((memberships || []).map(m => m.channel_id));
+
+    const visibleChannels = channels.filter(ch =>
+      !ch.is_private || allowedPrivateIds.has(ch.channel_id)
+    );
+
+    return res.json(visibleChannels);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
