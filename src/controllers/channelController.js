@@ -111,9 +111,17 @@ const getChannels = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    // Ensure type field is always present
+    const normalizedChannels = channels.map(ch => ({
+      ...ch,
+      type: ch.type || (ch.name?.startsWith('voice_') || ch.name?.toLowerCase() === 'lobby' ? 'voice' : 'text'),
+    }));
+
+    if (error) return res.status(500).json({ error: error.message });
+
     if (isOwner) {
       // Owner sees all channels
-      return res.json(channels);
+      return res.json(normalizedChannels);
     }
 
     // For non-owners: filter out private channels they are not a member of
@@ -133,7 +141,7 @@ const getChannels = async (req, res) => {
 
     const allowedPrivateIds = new Set((memberships || []).map(m => m.channel_id));
 
-    const visibleChannels = channels.filter(ch =>
+    const visibleChannels = normalizedChannels.filter(ch =>
       !ch.is_private || allowedPrivateIds.has(ch.channel_id)
     );
 
