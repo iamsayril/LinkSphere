@@ -109,15 +109,13 @@ const getChannels = async (req, res) => {
       .eq('workspace_id', workspace_id)
       .order('created_at', { ascending: true });
 
-    if (error) return res.status(500).json({ error: error.message });
+      if (error) return res.status(500).json({ error: error.message });
 
-    // Ensure type field is always present
-    const normalizedChannels = channels.map(ch => ({
-      ...ch,
-      type: ch.type || (ch.name?.startsWith('voice_') || ch.name?.toLowerCase() === 'lobby' ? 'voice' : 'text'),
-    }));
-
-    if (error) return res.status(500).json({ error: error.message });
+      // Ensure type field is always present
+      const normalizedChannels = channels.map(ch => ({
+        ...ch,
+        type: ch.type || (ch.name?.startsWith('voice_') || ch.name?.toLowerCase() === 'lobby' ? 'voice' : 'text'),
+      }));
 
     if (isOwner) {
       // Owner sees all channels
@@ -125,13 +123,13 @@ const getChannels = async (req, res) => {
     }
 
     // For non-owners: filter out private channels they are not a member of
-    const privateChannelIds = channels
+    const privateChannelIds = normalizedChannels
       .filter(ch => ch.is_private)
       .map(ch => ch.channel_id);
 
-    if (!privateChannelIds.length) {
-      return res.json(channels);
-    }
+      if (!privateChannelIds.length) {
+        return res.json(normalizedChannels);
+      }
 
     const { data: memberships } = await supabaseAdmin
       .from('channel_member')
