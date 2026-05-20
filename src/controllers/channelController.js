@@ -3,7 +3,7 @@ const { supabaseAdmin } = require('../config/supabase');
 // POST /api/channels
 const createChannel = async (req, res) => {
   try {
-    const { name, workspace_id } = req.body;
+    const { name, workspace_id, is_private, type } = req.body;
     const user_id = req.user.user_id;
 
     if (!name || !workspace_id) {
@@ -23,14 +23,11 @@ const createChannel = async (req, res) => {
     }
 
     // Create channel
-    const { type } = req.body;
     // is_private is extracted below with the insert
-
-    const { is_private } = req.body;
 
     const { data: channel, error } = await supabaseAdmin
       .from('channel')
-      .insert({ name, workspace_id, type: type || 'text', is_private: is_private || false, created_at: new Date().toISOString() })
+      .insert({ name, workspace_id, type: type || 'text', is_private: is_private === true, created_at: new Date().toISOString() })
       .select()
       .single();
 
