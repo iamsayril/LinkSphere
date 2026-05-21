@@ -362,6 +362,13 @@ const removeChannelAccess = async (req, res) => {
       .eq('channel_id', channelId)
       .eq('user_id', userId);
     if (error) return res.status(500).json({ error: error.message });
+
+    // Emit real-time event to notify the removed user
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('channel_access_revoked', { channelId, userId });
+    }
+
     return res.json({ message: 'Access removed' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
