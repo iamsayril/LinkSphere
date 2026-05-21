@@ -44,7 +44,7 @@ const getAuditLogs = async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('auditlog')
-      .select('*')
+      .select('*, user:user_id(avatar_url)')
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
       .limit(100);
