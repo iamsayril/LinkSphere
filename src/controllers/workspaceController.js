@@ -400,12 +400,28 @@ const updateMemberRole = async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: error.message });
 
-  return res.status(200).json(data);
-};
-
-// ─── Get Invite Code ─────────────────────────────────────────────────────────
+    // Fetch workspace name to include in notification
+    const { data: ws } = await supabaseAdmin
+      .from('workspace')
+      .select('name')
+      .eq('workspace_id', workspaceId)
+      .single();
+  
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${userId}`).emit('role_updated', {
+        role:           role,
+        workspace_name: ws?.name || 'a workspace',
+        workspace_id:   workspaceId,
+      });
+    }
+  
+    return res.status(200).json(data);
+  };
+  
+  // ─── Get Invite Code ─────────────────────────────────────────────────────────
 const getInviteCode = async (req, res) => {
   const { workspaceId } = req.params;
   const user_id = req.user.user_id;

@@ -268,8 +268,28 @@ const addReaction = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    // Fetch reactor name and message owner for notification
+    const { data: reactor } = await supabaseAdmin
+      .from('user')
+      .select('name')
+      .eq('user_id', user_id)
+      .single();
+
+    const { data: originalMessage } = await supabaseAdmin
+      .from('message')
+      .select('user_id')
+      .eq('message_id', messageId)
+      .single();
+
     const io = req.app.get('io');
-    if (io) io.to(message.channel_id).emit('reaction_added', { message_id: messageId, reaction });
+    if (io) io.to(message.channel_id).emit('reaction_added', {
+      message_id:       messageId,
+      reaction,
+      reactor_id:       user_id,
+      reactor_name:     reactor?.name || 'Someone',
+      message_owner_id: originalMessage?.user_id || null,
+      emoji:            emoji,
+    });
 
     return res.status(201).json(reaction);
   } catch (err) {

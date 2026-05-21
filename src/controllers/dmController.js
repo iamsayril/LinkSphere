@@ -135,10 +135,22 @@ const sendDm = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    const { data: sender } = await supabaseAdmin
+      .from('user')
+      .select('name')
+      .eq('user_id', sender_id)
+      .single();
+
     const io = req.app.get('io');
     if (io) {
-      io.to(`user:${receiver_id}`).emit('new_dm', dm);
-      io.to(`user:${sender_id}`).emit('new_dm', dm);
+      io.to(`user:${receiver_id}`).emit('new_dm', {
+        ...dm,
+        sender_name: sender?.name || 'Someone',
+      });
+      io.to(`user:${sender_id}`).emit('new_dm', {
+        ...dm,
+        sender_name: sender?.name || 'Someone',
+      });
     }
 
     return res.status(201).json(dm);
@@ -338,11 +350,23 @@ const addDmReaction = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    const { data: reactor } = await supabaseAdmin
+      .from('user')
+      .select('name')
+      .eq('user_id', user_id)
+      .single();
+
     const io = req.app.get('io');
     if (io) {
       const roomA = `user:${dm.sender_id}`;
       const roomB = `user:${dm.receiver_id}`;
-      io.to(roomA).to(roomB).emit('dm_reaction_added', { dm_id: dmId, reaction });
+      io.to(roomA).to(roomB).emit('dm_reaction_added', {
+        dm_id:        dmId,
+        reaction,
+        reactor_id:   user_id,
+        reactor_name: reactor?.name || 'Someone',
+        emoji:        emoji,
+      });
     }
 
     return res.status(201).json(reaction);
