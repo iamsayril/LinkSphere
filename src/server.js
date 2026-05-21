@@ -168,6 +168,24 @@ io.on('connection', (socket) => {
     io.to(`user:${toUserId}`).emit('webrtc_request_offer', { ...rest, fromUserId: socket.userId });
   });
 
+  // ── Channel Kick Events ──────────────────────────────────────────────────
+
+  socket.on('member_kicked_from_channel', (data) => {
+    const { channelId, userId, channelName, memberName, workspaceId } = data;
+    console.log(`🔒 Kicking user ${userId} from channel: ${channelName}`);
+    io.to(`user:${userId}`).emit('user_kicked_from_channel', {
+      channelId, channelName, memberName, workspaceId
+    });
+  });
+
+  socket.on('notify_user_kicked', (data) => {
+    const { targetUserId, channelId, channelName, memberName } = data;
+    console.log(`🔒 notify_user_kicked → user:${targetUserId}`);
+    io.to(`user:${targetUserId}`).emit('you_were_kicked', {
+      channelId, channelName, memberName
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log(`❌ Socket disconnected: ${socket.id}`);
 
