@@ -1,4 +1,4 @@
-const supabaseAdmin = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 
 // GET /api/notifications
 const getNotifications = async (req, res) => {
