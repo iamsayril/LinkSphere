@@ -122,28 +122,7 @@ const getChannels = async (req, res) => {
       return res.json(normalizedChannels);
     }
 
-    // For non-owners: filter out private channels they are not a member of
-    const privateChannelIds = normalizedChannels
-      .filter(ch => ch.is_private)
-      .map(ch => ch.channel_id);
-
-      if (!privateChannelIds.length) {
-        return res.json(normalizedChannels);
-      }
-
-    const { data: memberships } = await supabaseAdmin
-      .from('channel_member')
-      .select('channel_id')
-      .eq('user_id', user_id)
-      .in('channel_id', privateChannelIds);
-
-    const allowedPrivateIds = new Set((memberships || []).map(m => m.channel_id));
-
-    const visibleChannels = normalizedChannels.filter(ch =>
-      !ch.is_private || allowedPrivateIds.has(ch.channel_id)
-    );
-
-    return res.json(visibleChannels);
+    return res.json(normalizedChannels);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
