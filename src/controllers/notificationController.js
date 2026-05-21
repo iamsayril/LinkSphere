@@ -20,7 +20,10 @@ const getNotifications = async (req, res) => {
 
     const { data, error } = await query;
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      console.log('Supabase error:', JSON.stringify(error));
+      return res.status(500).json({ error: error.message });
+    }
 
     return res.json(data);
   } catch (err) {
