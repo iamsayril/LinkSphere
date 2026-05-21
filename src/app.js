@@ -15,6 +15,7 @@ const fileRoutes = require("./routes/fileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const dmRoutes = require('./routes/dmRoutes');
 const callRoutes = require("./routes/callRoutes");
+const auditLogRoutes = require("./routes/auditLogRoutes");
 
 const app = express();
 
@@ -72,6 +73,7 @@ app.use("/api/files", fileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/dm", dmRoutes); // ← fixed from /api/messages
 app.use("/api/calls", callRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 
 
 // Root

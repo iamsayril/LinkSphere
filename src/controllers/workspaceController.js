@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('../config/supabase');
 const crypto = require('crypto');
+const { createAuditLog } = require('./auditLogController');
 
 // ─── Helper: generate invite code ────────────────────────────────────────────
 const generateCode = () => crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -136,8 +137,19 @@ const updateWorkspace = async (req, res) => {
   const io = req.app.get('io');
   if (io) io.to(`workspace:${workspaceId}`).emit('workspace:updated', data);
 
+  await createAuditLog({
+    action_type: 'role_updated',
+    type:        'workspace',
+    workspace_id: workspaceId,
+    user_id:     userId,
+    actor_name:  req.user.name || null,
+    description: `Member role updated to ${role}`,
+  });
+
   return res.status(200).json(data);
 };
+
+// ─── Get Invite Code ─────────────────────────────────────────────────────────
 
 // ─── Delete Workspace ────────────────────────────────────────────────────────
 const deleteWorkspace = async (req, res) => {
@@ -367,6 +379,15 @@ const removeMember = async (req, res) => {
   const io = req.app.get('io');
   if (io) io.to(`workspace:${workspaceId}`).emit('workspace:member_removed', { userId });
 
+  await createAuditLog({
+    action_type: 'member_removed',
+    type:        'workspace',
+    workspace_id: workspaceId,
+    user_id:     requester_id,
+    actor_name:  req.user.name || null,
+    description: `Member was removed from workspace`,
+  });
+
   return res.status(200).json({ message: 'Member removed successfully' });
 };
 
@@ -541,6 +562,15 @@ const joinByCode = async (req, res) => {
 
   const io = req.app.get('io');
   if (io) io.to(`workspace:${workspace.workspace_id}`).emit('workspace:member_added', newMember);
+
+  await createAuditLog({
+    action_type: 'member_joined',
+    type:        'workspace',
+    workspace_id: workspace.workspace_id,
+    user_id,
+    actor_name:  user.name || null,
+    description: `${user.name} joined the workspace`,
+  });
 
   return res.status(201).json({
     message: `Joined workspace "${workspace.name}" successfully`,

@@ -1,4 +1,5 @@
 const { supabaseAdmin } = require('../config/supabase');
+const { createAuditLog } = require('./auditLogController');
 
 // POST /api/messages OR POST /api/channels/:channelId/messages
 const sendMessage = async (req, res) => {
@@ -243,6 +244,22 @@ const deleteMessage = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) io.to(existing.channel_id).emit('message_deleted', { message_id: messageId, channel_id: existing.channel_id });
+
+    const { data: chData } = await supabaseAdmin
+      .from('channel')
+      .select('workspace_id, name')
+      .eq('channel_id', existing.channel_id)
+      .single();
+
+    await createAuditLog({
+      action_type: 'message_deleted',
+      type:        'message',
+      workspace_id: chData?.workspace_id || null,
+      channel_id:  existing.channel_id,
+      user_id,
+      actor_name:  req.user.name || null,
+      description: `Message deleted in #${chData?.name || 'channel'}`,
+    });
 
     return res.json({ message: 'Message deleted successfully' });
   } catch (err) {

@@ -1,4 +1,5 @@
 const { supabaseAdmin } = require('../config/supabase');
+const { createAuditLog } = require('./auditLogController');
 
 // POST /api/channels
 const createChannel = async (req, res) => {
@@ -65,10 +66,20 @@ if (memberError) {
   return res.status(500).json({ error: 'Failed to add members: ' + memberError.message });
 }
 
-    return res.status(201).json(channel);
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
+await createAuditLog({
+  action_type: 'channel_created',
+  type:        'channel',
+  workspace_id: workspace_id,
+  channel_id:  channel.channel_id,
+  user_id,
+  actor_name:  req.user.name || null,
+  description: `Channel #${channel.name} was created`,
+});
+
+return res.status(201).json(channel);
+} catch (err) {
+return res.status(500).json({ error: err.message });
+}
 };
 
 // GET /api/channels
@@ -254,6 +265,16 @@ const updateChannel = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    await createAuditLog({
+      action_type: 'channel_renamed',
+      type:        'channel',
+      workspace_id: channel.workspace_id,
+      channel_id:  channelId,
+      user_id,
+      actor_name:  req.user.name || null,
+      description: `Channel renamed to #${name}`,
+    });
+
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -293,6 +314,16 @@ const deleteChannel = async (req, res) => {
       .eq('channel_id', channelId);
 
     if (error) return res.status(500).json({ error: error.message });
+
+    await createAuditLog({
+      action_type: 'channel_deleted',
+      type:        'channel',
+      workspace_id: channel.workspace_id,
+      channel_id:  channelId,
+      user_id,
+      actor_name:  req.user.name || null,
+      description: `Channel #${channel.name} was deleted`,
+    });
 
     return res.json({ message: 'Channel deleted successfully' });
   } catch (err) {
