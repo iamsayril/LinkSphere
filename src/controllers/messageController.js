@@ -296,7 +296,13 @@ const addReaction = async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Fetch reactor name and message owner for notification
+    // Fetch channel name, reactor name and message owner for notification
+    const { data: channelData } = await supabaseAdmin
+      .from('channel')
+      .select('name')
+      .eq('channel_id', message.channel_id)
+      .single();
+
     const { data: reactor } = await supabaseAdmin
       .from('user')
       .select('name')
@@ -318,6 +324,7 @@ const addReaction = async (req, res) => {
           reactor_name:     reactor?.name || 'Someone',
           message_owner_id: originalMessage?.user_id || null,
           emoji:            emoji,
+          channel_name:     channelData?.name || 'channel',
         };
   
         // Emit to channel room (for live reaction updates in workspace)
