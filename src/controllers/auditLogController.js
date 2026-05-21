@@ -4,7 +4,7 @@ const { supabaseAdmin } = require('../config/supabase');
 
 const createAuditLog = async ({ action_type, type, workspace_id, channel_id = null, user_id = null, actor_name = null, description = null }) => {
   try {
-    await supabaseAdmin
+    const { error: auditError } = await supabaseAdmin
       .from('auditlog')
       .insert({
         action_type,
@@ -17,6 +17,7 @@ const createAuditLog = async ({ action_type, type, workspace_id, channel_id = nu
         status: 'success',
         created_at: new Date().toISOString(),
       });
+    if (auditError) console.error('Audit insert failed:', auditError.message);
   } catch (err) {
     console.error('Audit log error:', err.message);
   }
