@@ -238,7 +238,7 @@ const updateChannel = async (req, res) => {
     // Get channel to find workspace_id
     const { data: channel } = await supabaseAdmin
       .from('channel')
-      .select('workspace_id')
+      .select('workspace_id, name')
       .eq('channel_id', channelId)
       .single();
 
