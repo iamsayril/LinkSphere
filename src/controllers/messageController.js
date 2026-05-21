@@ -21,16 +21,22 @@ if (!members || members.length === 0) {
   return res.status(403).json({ error: 'You are not a member of this channel' });
 }
 
-    const { data: message, error } = await supabaseAdmin
-      .from('message')
-      .insert({
-        channel_id,
-        content,
-        user_id,
-        parent_message_id: parent_message_id || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+const { data: channelData } = await supabaseAdmin
+.from('channel')
+.select('name')
+.eq('channel_id', channel_id)
+.single();
+
+const { data: message, error } = await supabaseAdmin
+.from('message')
+.insert({
+  channel_id,
+  content,
+  user_id,
+  parent_message_id: parent_message_id || null,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+})
       .select(`
         message_id,
         content,
@@ -49,7 +55,29 @@ if (!members || members.length === 0) {
     if (error) return res.status(500).json({ error: error.message });
 
     const io = req.app.get('io');
-    if (io) io.to(channel_id).emit('new_message', message);
+    if (io) {
+      io.to(channel_id).emit('new_message', message);
+
+      // Notify all channel members in their user rooms (for notification page)
+      const { data: channelMembers } = await supabaseAdmin
+        .from('channel_member')
+        .select('user_id')
+        .eq('channel_id', channel_id);
+
+      if (channelMembers) {
+        channelMembers
+          .filter(m => m.user_id !== user_id)
+          .forEach(m => {
+            io.to(`user:${m.user_id}`).emit('new_channel_message', {
+              channel_id,
+              channel_name: channelData?.name || 'a channel',
+              sender_name:  message.user?.name || 'Someone',
+              content:      message.content,
+              created_at:   message.created_at,
+            });
+          });
+      }
+    }
 
     return res.status(201).json(message);
   } catch (err) {
@@ -281,15 +309,25 @@ const addReaction = async (req, res) => {
       .eq('message_id', messageId)
       .single();
 
-    const io = req.app.get('io');
-    if (io) io.to(message.channel_id).emit('reaction_added', {
-      message_id:       messageId,
-      reaction,
-      reactor_id:       user_id,
-      reactor_name:     reactor?.name || 'Someone',
-      message_owner_id: originalMessage?.user_id || null,
-      emoji:            emoji,
-    });
+      const io = req.app.get('io');
+      if (io) {
+        const payload = {
+          message_id:       messageId,
+          reaction,
+          reactor_id:       user_id,
+          reactor_name:     reactor?.name || 'Someone',
+          message_owner_id: originalMessage?.user_id || null,
+          emoji:            emoji,
+        };
+  
+        // Emit to channel room (for live reaction updates in workspace)
+        io.to(message.channel_id).emit('reaction_added', payload);
+  
+        // Also emit directly to message owner's user room (for notification page)
+        if (originalMessage?.user_id && originalMessage.user_id !== user_id) {
+          io.to(`user:${originalMessage.user_id}`).emit('reaction_added', payload);
+        }
+      }
 
     return res.status(201).json(reaction);
   } catch (err) {
