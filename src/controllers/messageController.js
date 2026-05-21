@@ -291,13 +291,6 @@ const addReaction = async (req, res) => {
       .eq('message_id', messageId)
       .eq('user_id', user_id);
 
-    // Delete any existing reaction by this user on this message (enforces 1 reaction per user)
-    await supabaseAdmin
-      .from('reaction')
-      .delete()
-      .eq('message_id', messageId)
-      .eq('user_id', user_id);
-
     const { data: reaction, error } = await supabaseAdmin
       .from('reaction')
       .insert({
@@ -309,9 +302,7 @@ const addReaction = async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
-
-    if (error) return res.status(500).json({ error: error.message });
+      if (error) return res.status(500).json({ error: error.message });
 
     // Fetch channel name, reactor name and message owner for notification
     const { data: channelData } = await supabaseAdmin
@@ -344,13 +335,8 @@ const addReaction = async (req, res) => {
           channel_name:     channelData?.name || 'channel',
         };
   
-        // Emit to channel room (for live reaction updates in workspace)
+        // Emit to channel room only (frontend handles notification)
         io.to(message.channel_id).emit('reaction_added', payload);
-  
-        // Also emit directly to message owner's user room (for notification page)
-        if (originalMessage?.user_id && originalMessage.user_id !== user_id) {
-          io.to(`user:${originalMessage.user_id}`).emit('reaction_added', payload);
-        }
       }
 
     return res.status(201).json(reaction);
