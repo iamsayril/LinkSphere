@@ -5,6 +5,7 @@ const getNotifications = async (req, res) => {
   try {
     console.log('req.user:', req.user);
     const user_id = req.user.user_id;
+    console.log('user_id:', user_id);
     const { limit = 20, unread_only } = req.query;
 
     let query = supabaseAdmin
@@ -27,6 +28,7 @@ const getNotifications = async (req, res) => {
 
     return res.json(data);
   } catch (err) {
+    console.log('CATCH ERROR:', err);
     return res.status(500).json({ error: err.message });
   }
 };
