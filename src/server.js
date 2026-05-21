@@ -173,7 +173,12 @@ io.on('connection', (socket) => {
   socket.on('member_kicked_from_channel', (data) => {
     const { channelId, userId, channelName, memberName, workspaceId } = data;
     console.log(`🔒 Kicking user ${userId} from channel: ${channelName}`);
+
+    // Emit to both events so either listener on frontend catches it
     io.to(`user:${userId}`).emit('user_kicked_from_channel', {
+      channelId, channelName, memberName, workspaceId
+    });
+    io.to(`user:${userId}`).emit('you_were_kicked', {
       channelId, channelName, memberName, workspaceId
     });
   });
@@ -181,6 +186,10 @@ io.on('connection', (socket) => {
   socket.on('notify_user_kicked', (data) => {
     const { targetUserId, channelId, channelName, memberName } = data;
     console.log(`🔒 notify_user_kicked → user:${targetUserId}`);
+
+    io.to(`user:${targetUserId}`).emit('user_kicked_from_channel', {
+      channelId, channelName, memberName
+    });
     io.to(`user:${targetUserId}`).emit('you_were_kicked', {
       channelId, channelName, memberName
     });
