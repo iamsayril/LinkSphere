@@ -342,6 +342,53 @@ const getVoiceMembers = async (req, res) => {
   }
 };
 
+// GET /api/channels/:channelId/access
+const getChannelAccess = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('channel_member')
+      .select('user_id, role')
+      .eq('channel_id', channelId);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data || []);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/channels/:channelId/access
+const addChannelAccess = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+    const { error } = await supabaseAdmin
+      .from('channel_member')
+      .upsert({ channel_id: channelId, user_id, role: 'member', joined_at: new Date().toISOString() }, { onConflict: 'channel_id,user_id' });
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json({ message: 'Access granted' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/channels/:channelId/access/:userId
+const removeChannelAccess = async (req, res) => {
+  try {
+    const { channelId, userId } = req.params;
+    const { error } = await supabaseAdmin
+      .from('channel_member')
+      .delete()
+      .eq('channel_id', channelId)
+      .eq('user_id', userId);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ message: 'Access removed' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   createChannel,
   getChannels,
@@ -351,4 +398,7 @@ module.exports = {
   updateChannel,
   deleteChannel,
   getVoiceMembers,
+  getChannelAccess,
+  addChannelAccess,
+  removeChannelAccess,
 };

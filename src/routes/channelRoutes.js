@@ -9,6 +9,9 @@ const {
   updateChannel,
   deleteChannel,
   getVoiceMembers,
+  getChannelAccess,
+  addChannelAccess,
+  removeChannelAccess,
 } = require('../controllers/channelController');
 const {
   getMessages,
@@ -32,5 +35,8 @@ router.post('/:channelId/messages', sendMessage);
 router.post('/:channelId/messages/:messageId/reactions', addReaction);
 router.delete('/:channelId/messages/:messageId/reactions/:emoji', removeReaction);
 router.get('/:channelId/voice-members', getVoiceMembers);
+router.get('/:channelId/access', getChannelAccess);
+router.post('/:channelId/access', addChannelAccess);
+router.delete('/:channelId/access/:userId', removeChannelAccess);
 
 module.exports = router;
