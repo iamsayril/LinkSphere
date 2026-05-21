@@ -319,7 +319,7 @@ const deleteChannel = async (req, res) => {
       action_type: 'channel_deleted',
       type:        'channel',
       workspace_id: channel.workspace_id,
-      channel_id:  channelId,
+      channel_id:  null,
       user_id,
       actor_name:  req.user.name || null,
       description: `Channel #${channel.name} was deleted`,
