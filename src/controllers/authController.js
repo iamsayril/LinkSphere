@@ -4,7 +4,7 @@ const { supabase, supabaseAdmin } = require('../config/supabase');
 // ─── Helper: generate your app JWT from a user row ───────────────────────────
 function makeToken(user) {
   return jwt.sign(
-    { user_id: user.user_id, email: user.email },
+    { user_id: user.user_id, email: user.email, name: user.name },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
