@@ -3,6 +3,7 @@ const supabaseAdmin = require('../config/supabase');
 // GET /api/notifications
 const getNotifications = async (req, res) => {
   try {
+    console.log('req.user:', req.user);
     const user_id = req.user.user_id;
     const { limit = 20, unread_only } = req.query;
 
